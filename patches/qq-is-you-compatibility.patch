@@ -1,0 +1,13 @@
+--- a/codec.py
++++ b/codec.py
+@@ -281,6 +281,10 @@
+     if event_type != GROUP_MESSAGE_EVENT or not account_id:
+         return False
+     for mention in payload.get("mentions") or []:
++        # QQ full-group events may identify this bot with a group-scoped OpenID.
++        # The official event's explicit self marker avoids comparing unlike IDs.
++        if isinstance(mention, Mapping) and mention.get("is_you") is True:
++            return True
+         if isinstance(mention, Mapping) and any(
+             str(mention.get(key) or "").strip() == account_id
+             for key in ("id", "openid", "user_openid", "member_openid")

@@ -1,0 +1,106 @@
+# Template only: API key intentionally empty. Do not overwrite a live config.
+[[api_providers]]
+name = "deepseek"
+base_url = "https://api.deepseek.com/v1"
+client_type = "openai"
+max_retry = 2
+timeout = 60
+retry_interval = 4
+api_key = ""
+
+[[models]]
+name = "deepseek-flash"
+model_identifier = "deepseek-flash"
+api_provider = "deepseek"
+model_type = "llm"
+visual = false
+
+[models.extra_params.thinking]
+type = "disabled"
+
+[model_task_config.web_search]
+model_list = []
+
+[model_task_config.replyer]
+model_list = ["deepseek-flash"]
+max_tokens = 1536
+temperature = 0.9
+selection_strategy = "random"
+hard_timeout = 90.0
+
+[model_task_config.planner]
+model_list = ["deepseek-flash"]
+max_tokens = 4096
+temperature = 0.7
+selection_strategy = "random"
+hard_timeout = 90.0
+
+[model_task_config.memory]
+model_list = []
+max_tokens = 2048
+temperature = 0.3
+selection_strategy = "random"
+hard_timeout = 90.0
+
+[model_task_config.mid_memory]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "random"
+hard_timeout = 90.0
+
+[model_task_config.utils]
+model_list = ["deepseek-flash"]
+max_tokens = 2048
+temperature = 0.5
+selection_strategy = "random"
+hard_timeout = 90.0
+
+[model_task_config.learner]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.fast_model]
+model_list = ["deepseek-flash"]
+max_tokens = 2048
+temperature = 0.3
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.emoji]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.vlm]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.voice]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.embedding]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0
+
+[model_task_config.image_embedding]
+model_list = []
+max_tokens = 2048
+temperature = 0.7
+selection_strategy = "balance"
+hard_timeout = 90.0

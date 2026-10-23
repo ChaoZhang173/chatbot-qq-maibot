@@ -1,0 +1,18 @@
+# Template only: credentials empty, adapter disabled until configured privately.
+[plugin]
+enabled = false
+config_version = "0.4.1"
+
+[qq_official]
+app_id = ""
+app_secret = ""
+api_base_url = "https://api.bot.qq.com"
+reconnect_delay_sec = 5.0
+unified_account_id = ""
+assign_admin_ids = ["__DISABLED_UNTIL_OWNER_CONFIGURES__"]
+
+[mute]
+enabled = false
+
+[recall]
+enabled = false

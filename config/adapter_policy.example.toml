@@ -1,0 +1,18 @@
+# Replace all identifiers privately; unlisted chats remain blocked.
+[defaults.group]
+default_action = "block"
+
+[defaults.private]
+default_action = "block"
+
+[[adapters]]
+plugin_id = "Mai-with-u.qq-adapter"
+platform = "qq"
+account_id = "REPLACE_WITH_BOT_OPENID"
+
+[adapters.group]
+default_action = "block"
+allow_ids = ["REPLACE_WITH_GROUP_A_OPENID", "REPLACE_WITH_GROUP_B_OPENID"]
+
+[adapters.private]
+default_action = "block"

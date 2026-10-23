@@ -1,0 +1,47 @@
+[Unit]
+Description=MaiBot private QQ chat instance
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/srv/maibot/eula.confirmed
+ConditionPathExists=/srv/maibot/privacy.confirmed
+ConditionPathExists=/srv/maibot/setup.ready
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=maibot
+Group=maibot
+WorkingDirectory=/srv/maibot
+ExecStart=/opt/maibot/bin/maibot run --directory /srv/maibot
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=75
+KillMode=mixed
+UMask=0077
+Environment=HOME=/srv/maibot
+Environment=TZ=Asia/Shanghai
+Environment=PATH=/opt/maibot/bin:/usr/local/bin:/usr/bin:/bin
+Environment=UV_TOOL_DIR=/opt/maibot/tools
+Environment=UV_TOOL_BIN_DIR=/opt/maibot/bin
+Environment=UV_CACHE_DIR=/opt/maibot/cache
+Environment=UV_DEFAULT_INDEX=https://mirrors.cloud.tencent.com/pypi/simple
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+Environment=MALLOC_ARENA_MAX=2
+Environment=PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/maibot /opt/maibot
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryAccounting=true
+MemoryHigh=1100M
+MemoryMax=1400M
+MemorySwapMax=768M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target
