@@ -1,0 +1,8 @@
+{
+  "files_scanned": 49,
+  "known_credentials_absent": true,
+  "credential_patterns_absent": true,
+  "allowlist_only": true,
+  "private_runtime_included": false,
+  "real_payment_verified": false
+}

@@ -1,0 +1,19 @@
+# TEMPLATE ONLY. No domain is provisioned or asserted reachable.
+# Set AFDIAN_CALLBACK_HOST to a domain you control that resolves to this Lighthouse.
+# Keep the path secret in the service environment; disable access logging here.
+{$AFDIAN_CALLBACK_HOST} {
+    encode gzip
+    @afdian path /webhooks/afdian/*
+    handle @afdian {
+        request_body {
+            max_size 64KB
+        }
+        reverse_proxy 127.0.0.1:18765
+    }
+    handle /health {
+        reverse_proxy 127.0.0.1:18765
+    }
+    handle {
+        respond 404
+    }
+}

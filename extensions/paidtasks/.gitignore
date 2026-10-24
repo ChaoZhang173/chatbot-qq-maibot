@@ -1,0 +1,13 @@
+private/
+state/
+__pycache__/
+*.pyc
+.venv/
+*.sqlite*
+*.env
+!*.env.example
+
+build/regression/
+private/
+release/
+assets/fonts/*.otf

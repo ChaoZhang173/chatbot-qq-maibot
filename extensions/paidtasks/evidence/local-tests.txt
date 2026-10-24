@@ -1,0 +1,44 @@
+test_amount_never_float_or_rounded (test_paidtasks.APIContract.test_amount_never_float_or_rounded) ... ok
+test_official_sign_vector (test_paidtasks.APIContract.test_official_sign_vector) ... ok
+test_query_requires_exact_order_and_business_ec (test_paidtasks.APIContract.test_query_requires_exact_order_and_business_ec) ... ok
+test_retry_bounded_and_error_redacted (test_paidtasks.APIContract.test_retry_bounded_and_error_redacted) ... ok
+test_budget_atomic_and_unknown_not_zero_across_day (test_paidtasks.PaymentAndBudget.test_budget_atomic_and_unknown_not_zero_across_day) ... ok
+test_concurrent_webhook_poll_duplicates (test_paidtasks.PaymentAndBudget.test_concurrent_webhook_poll_duplicates) ... ok
+test_delivery_retry_preserves_result (test_paidtasks.PaymentAndBudget.test_delivery_retry_preserves_result) ... ok
+test_duplicate_channel_input_does_not_create_two_quotes (test_paidtasks.PaymentAndBudget.test_duplicate_channel_input_does_not_create_two_quotes) ... ok
+test_forged_webhook_only_enqueues_lookup (test_paidtasks.PaymentAndBudget.test_forged_webhook_only_enqueues_lookup) ... ok
+test_manual_bili_acceptance_and_delivery_are_distinct (test_paidtasks.PaymentAndBudget.test_manual_bili_acceptance_and_delivery_are_distinct) ... ok
+test_manual_binding_still_checks_official_amount (test_paidtasks.PaymentAndBudget.test_manual_binding_still_checks_official_amount) ... ok
+test_paid_state_survives_missing_budget_reservation (test_paidtasks.PaymentAndBudget.test_paid_state_survives_missing_budget_reservation) ... ok
+test_pause_keeps_paid_and_queued (test_paidtasks.PaymentAndBudget.test_pause_keeps_paid_and_queued) ... ok
+test_product_amount_and_quantity_mismatches_keep_paid_facts (test_paidtasks.PaymentAndBudget.test_product_amount_and_quantity_mismatches_keep_paid_facts) ... ok
+test_quote_immutable (test_paidtasks.PaymentAndBudget.test_quote_immutable) ... ok
+test_running_and_ambiguous_send_not_blindly_retried (test_paidtasks.PaymentAndBudget.test_running_and_ambiguous_send_not_blindly_retried) ... ok
+test_stale_owner_notifications_pause_new_commitments (test_paidtasks.PaymentAndBudget.test_stale_owner_notifications_pause_new_commitments) ... ok
+test_success_once_delivery_and_close_are_separate (test_paidtasks.PaymentAndBudget.test_success_once_delivery_and_close_are_separate) ... ok
+test_two_ten_yuan_customers_do_not_swap (test_paidtasks.PaymentAndBudget.test_two_ten_yuan_customers_do_not_swap) ... ok
+test_unaccepted_old_expired_and_unknown_binding (test_paidtasks.PaymentAndBudget.test_unaccepted_old_expired_and_unknown_binding) ... ok
+test_unauthorized_customer_cannot_read_or_accept (test_paidtasks.PaymentAndBudget.test_unauthorized_customer_cannot_read_or_accept) ... ok
+test_authorized_budget_retry_does_not_allocate_twice (test_paidtasks.PollAndArtifacts.test_authorized_budget_retry_does_not_allocate_twice) ... ok
+test_cancel_retains_inflight_budget_and_blocks_execution (test_paidtasks.PollAndArtifacts.test_cancel_retains_inflight_budget_and_blocks_execution) ... ok
+test_delivered_quote_token_removed_from_outbox (test_paidtasks.PollAndArtifacts.test_delivered_quote_token_removed_from_outbox) ... ok
+test_pagination_baseline_and_restart_catchup (test_paidtasks.PollAndArtifacts.test_pagination_baseline_and_restart_catchup) ... ok
+test_passive_owner_mode_requires_consent_and_fresh_private_command (test_paidtasks.PollAndArtifacts.test_passive_owner_mode_requires_consent_and_fresh_private_command) ... ok
+test_query_failure_then_recovery (test_paidtasks.PollAndArtifacts.test_query_failure_then_recovery) ... ok
+test_real_png_renderer_and_no_eval (test_paidtasks.PollAndArtifacts.test_real_png_renderer_and_no_eval) ... ok
+test_refund_while_running_holds_generated_result (test_paidtasks.PollAndArtifacts.test_refund_while_running_holds_generated_result) ... ok
+test_repeat_confirmation_after_payment_never_invites_second_payment (test_paidtasks.PollAndArtifacts.test_repeat_confirmation_after_payment_never_invites_second_payment) ... ok
+test_saved_result_recovers_without_generation (test_paidtasks.PollAndArtifacts.test_saved_result_recovers_without_generation) ... ok
+test_support_income_is_separate_from_task_and_budget (test_paidtasks.PollAndArtifacts.test_support_income_is_separate_from_task_and_budget) ... ok
+test_tampered_result_cannot_be_recovered (test_paidtasks.PollAndArtifacts.test_tampered_result_cannot_be_recovered) ... ok
+test_unknown_send_requires_evidence_before_retry (test_paidtasks.PollAndArtifacts.test_unknown_send_requires_evidence_before_retry) ... ok
+test_partial_image_failure_does_not_replay_text (test_transport.BridgeDelivery.test_partial_image_failure_does_not_replay_text) ... ok
+test_same_delivery_once_and_changed_payload_denied (test_transport.BridgeDelivery.test_same_delivery_once_and_changed_payload_denied) ... ok
+test_shared_memory_only_has_anonymous_status (test_transport.BridgeDelivery.test_shared_memory_only_has_anonymous_status) ... ok
+test_unbound_owner_and_wrong_channel_never_send (test_transport.BridgeDelivery.test_unbound_owner_and_wrong_channel_never_send) ... ok
+test_webhook_ack_is_durable_hint_not_payment (test_transport.HTTPIngress.test_webhook_ack_is_durable_hint_not_payment) ... ok
+
+----------------------------------------------------------------------
+Ran 39 tests in 0.688s
+
+OK

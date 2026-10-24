@@ -1,0 +1,115 @@
+{
+  "checked_at": 1792854841.4135594,
+  "deployed": true,
+  "backup": "/srv/maibot/paid-backups/20261024-150623",
+  "status": {
+    "accounting": {
+      "allocated_budget_microyuan": 1000000,
+      "automatic_budget_reinvestment": false,
+      "customer_paid_fen": 0,
+      "delivered_gross_fen": 0,
+      "fees_fen": null,
+      "held_budget_microyuan": 0,
+      "infrastructure_cost_included": false,
+      "known_execution_api_cost_microyuan": 0,
+      "owner_recorded_refunds_fen": 0,
+      "support_received_fen": 0,
+      "unknown_cost_jobs": 0,
+      "withdrawable_balance_fen": null
+    },
+    "api_failures": 3,
+    "bili_dm_mode": "manual_import",
+    "bootstrap_complete": false,
+    "budget_available_microyuan": 1000000,
+    "intake_enabled": false,
+    "mode": "pilot",
+    "notifications": {
+      "sent": 1
+    },
+    "ok": true,
+    "orders": {},
+    "paused": false,
+    "scan_page": 1,
+    "settlement_balance": "unverified"
+  },
+  "core": {
+    "ok": true,
+    "owner_c2c_bound": true,
+    "owner_sessions_count": 1,
+    "paid_model_supported": false,
+    "private_image_route": "existing_sdk_unverified"
+  },
+  "services": {
+    "maibot": {
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "MemoryCurrent": "511275008",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "bilibot": {
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "MemoryCurrent": "24981504",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "paidtasks": {
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "MemoryCurrent": "18743296",
+      "ActiveState": "active",
+      "SubState": "running"
+    }
+  },
+  "paid_model_cost_records": 0,
+  "real_payment_verified": false,
+  "platform_evidence": [
+    {
+      "file": "live-probe.json",
+      "evidence": {
+        "checked_at": 1792854508.9646633,
+        "real_payment_verified": false,
+        "sites": {
+          "https://afdian.com/": {
+            "error": "transport_unavailable"
+          },
+          "https://afdian.com/dashboard/dev": {
+            "error": "transport_unavailable"
+          },
+          "https://guide.afdian.com/creator/developer": {
+            "http_status": 403
+          }
+        },
+        "api": {
+          "ok": false,
+          "reason": "transport_unavailable"
+        }
+      }
+    },
+    {
+      "file": "owner-delivery-evidence.json",
+      "evidence": {
+        "checked_at": 1792854731.7213576,
+        "mode": "passive_window",
+        "receipt_verified": true,
+        "receipt_sha256": "8fcd4f717b8bd6918d95f6a2683b0cd764110846598a25a53c4f9a29d15234e3",
+        "unlimited_active_push_verified": false
+      }
+    },
+    {
+      "file": "image-delivery-evidence.json",
+      "evidence": {
+        "checked_at": 1792854796.3573294,
+        "test": "synthetic_formula_image_to_verified_owner_c2c",
+        "status": "sent",
+        "receipt_sha256": "163a7fa5d2f2efac64d0955bb7aef79d9e1c890c4cafddd3904ab27b81e4783c",
+        "image_sha256": "14ccd866b0c95bc53aade0d815a62f4d24e9f10bed0771548df696ce3c4fc938",
+        "image_bytes": 25007,
+        "max_rss_kib": 41856,
+        "wall_seconds": 2.569,
+        "real_order": false
+      }
+    }
+  ]
+}

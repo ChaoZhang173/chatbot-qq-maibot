@@ -1,0 +1,6 @@
+{
+  "python": "3.12.3",
+  "text_signature": "text(self,text,stream_id,*,return_details=False,**kwargs)",
+  "image_signature": "image(self,image_data,stream_id,*,return_details=False,**kwargs)",
+  "verified_on_existing_lighthouse": true
+}

@@ -1,0 +1,12 @@
+{
+  "environment": "local_development_not_lighthouse",
+  "platform": "darwin",
+  "task": "render_plot_20_points",
+  "seconds": 0.029,
+  "max_rss_native": 36077568,
+  "rss_unit": "bytes",
+  "png_bytes": 71440,
+  "sha256": "07cada1b4a9bc064d00a8a25b93eca7d39f250a039aad35a81e615c0c69f20d6",
+  "server_connections_tested": false,
+  "server_oom_tested": false
+}

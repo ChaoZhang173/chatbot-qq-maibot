@@ -1,0 +1,14 @@
+{
+  "checked_at": 1792849725.947253,
+  "source": "local_real_network",
+  "results": {
+    "ping": {
+      "ok": false,
+      "reason": "transport_unavailable"
+    },
+    "orders": {
+      "ok": false,
+      "reason": "transport_unavailable"
+    }
+  }
+}

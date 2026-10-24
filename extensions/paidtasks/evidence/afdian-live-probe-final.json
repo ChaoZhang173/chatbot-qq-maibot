@@ -1,0 +1,19 @@
+{
+  "checked_at": 1792852582.8019662,
+  "real_payment_verified": false,
+  "sites": {
+    "https://afdian.com/": {
+      "http_status": 403
+    },
+    "https://afdian.com/dashboard/dev": {
+      "http_status": 403
+    },
+    "https://guide.afdian.com/creator/developer": {
+      "http_status": 403
+    }
+  },
+  "api": {
+    "ok": false,
+    "reason": "transport_unavailable"
+  }
+}

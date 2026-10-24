@@ -1,0 +1,91 @@
+{
+  "as_of": "2026-10-24",
+  "release": "0.1.0-pilot",
+  "implemented": true,
+  "deployed": true,
+  "real_payment_verified": false,
+  "intake_enabled": false,
+  "promotion_published": false,
+  "public_https_callback": null,
+  "tasks": [
+    {
+      "id": "text_cleanup",
+      "description": "去除首尾空白及空行，不改写内容",
+      "implemented": true,
+      "local_tested": true,
+      "deployed": true,
+      "real_channel_verified": false
+    },
+    {
+      "id": "render_formula",
+      "description": "有限十进制四则运算及PNG结果图，不执行任意代码",
+      "implemented": true,
+      "local_tested": true,
+      "deployed": true,
+      "real_channel_verified": true
+    },
+    {
+      "id": "render_plot",
+      "description": "1至20个非负数值的有单位柱状图",
+      "implemented": true,
+      "local_tested": true,
+      "deployed": true,
+      "real_channel_verified": false
+    }
+  ],
+  "disabled": [
+    "model_problem_explanation",
+    "model_code_review",
+    "model_script_generation",
+    "paid_image_generation",
+    "arbitrary_code_execution",
+    "automatic_bilibili_dm",
+    "automatic_refunds",
+    "automatic_balance_top_up"
+  ],
+  "channels": {
+    "qq_commands": "deployed_owner_status_received",
+    "qq_owner_active_notification": "blocked_by_official_platform_policy_and_no_live_receipt",
+    "qq_images": "c2c_png_real_receipt_verified_group_not_tested",
+    "bilibili_inquiries": "owner_manual_import_and_manual_delivery",
+    "shared_memory": "deployed_anonymous_status_only_no_real_paid_order_yet",
+    "qq_owner_passive_notification": "user_accepted_and_real_receipt_verified"
+  },
+  "payment": {
+    "official_signature_vector": "passed",
+    "account_authentication": "transport_unavailable_unverified",
+    "webhook_trust": "untrusted_hint_then_official_query",
+    "platform_webhook_signature": "not_documented_in_public_guide_backend_unverified",
+    "auto_binding": "requires_verified_remark_preservation",
+    "fallback_binding": "owner_evidence_plus_official_query",
+    "historical_baseline": "implemented",
+    "pagination_catchup": "implemented"
+  },
+  "limits": {
+    "price_fen": 100,
+    "maximum_order_fen": 100,
+    "maximum_parallel_jobs": 1,
+    "project_budget_microyuan": 1000000,
+    "maximum_task_budget_microyuan": 250000,
+    "daily_budget_microyuan": 1000000,
+    "accept_requires_allocated_budget": true,
+    "authorized_project_budget_microyuan": 1000000,
+    "budget_applied_to_production": true,
+    "passive_window_accepted": true
+  },
+  "testing": {
+    "paid_tests_passed": 39,
+    "patched_baseline_regression_tests_passed": 50,
+    "synthetic_payment_only": true,
+    "server_load_test": "bounded_synthetic_formula_render_and_c2c_send_41856KiB_cli_peak_not_paid_worker_peak",
+    "real_payment": "not_attempted",
+    "server_paid_tests_passed": 39
+  },
+  "blockers": [
+    "afdian_site_and_api_access",
+    "verified_product_configuration",
+    "real_payment_acceptance",
+    "full_live_ordinary_chat_bilibili_regression"
+  ],
+  "ssh_connection_at_end": "disconnected_after_successful_deployment_and_receipts"
+}

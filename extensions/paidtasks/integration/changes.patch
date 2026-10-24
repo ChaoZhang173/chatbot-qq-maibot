@@ -1,0 +1,91 @@
+--- a/extensions/maibot_unified_core/service.py
++++ b/extensions/maibot_unified_core/service.py
+@@ -43,7 +43,7 @@
+         self.state=None;self.policy={};self.last_error=''
+         self.pending_qq_identity={};self.persona_sync_lock=asyncio.Lock()
+         self.persona_checked_at=0.0
+-        self.commands=None;self.command_worker=None;self.media=None;self.private_access=None
++        self.commands=None;self.command_worker=None;self.media=None;self.private_access=None;self.paid=None
+ 
+     def reload_policy(self):
+         self.policy=json.loads((self.root/'policy.json').read_text())
+@@ -66,6 +66,8 @@
+         self.reload_policy()
+         self.media=MediaStore(self)
+         self.commands=CommandQueue(self)
++        from .paid_bridge import PaidBridge
++        self.paid=PaidBridge(self)
+         try:
+             await self.sync_host_persona()
+         except BaseException:
+@@ -163,6 +165,9 @@
+ 
+     async def dispatch(self,r,admin=False):
+         op=r.get('op')
++        if isinstance(op,str) and op.startswith('paid_'):
++            if not admin:raise PermissionError('admin_only')
++            return await self.paid.dispatch(r)
+         if op=='qq_private_gate':
+             if not admin:raise PermissionError('admin_only')
+             return self.private_access.handle(r)
+@@ -274,6 +279,7 @@
+             m={**m,'scope':'private'}
+             self.reload_policy()
+         if session not in self.policy.get('allowed_qq_sessions',[]):return
++        if self.paid and await self.paid.capture(m):return
+         if self.media:self.media.capture(m)
+         if self.commands:
+             self.commands.capture_links(m)
+@@ -499,6 +505,7 @@
+ 
+     async def record_qq_pending(self,message):
+         m,info,user,session=self.qq_fields(message)
++        if self.paid and session in self.paid.in_flight:return
+         if session not in self.policy.get('allowed_qq_sessions',[]):return
+         mid=str(m.get('message_id') or '')
+         if not mid:return
+@@ -509,6 +516,7 @@
+ 
+     async def record_qq_sent(self,message,sent):
+         m,info,user,session=self.qq_fields(message)
++        if self.paid and session in self.paid.in_flight:return
+         if session not in self.policy.get('allowed_qq_sessions',[]):return
+         pending_key=self.qq_send_key(m,session)
+         pending=self.state.get(pending_key,{})
+--- a/extensions/qq_official_adapter/plugin.py
++++ b/extensions/qq_official_adapter/plugin.py
+@@ -78,6 +78,8 @@
+         self._id_map: Dict[str, Any] = {"group": {}, "user": {}}
+         self._unified_account_id = ""
+         self._assign_admin_ids: List[str] = []
++        self._paid_owner_server = None
++        self._paid_owner_start = None
+ 
+     async def on_load(self) -> None:
+         await self._sync_tool_states()
+@@ -126,8 +128,25 @@
+         self._assign_admin_ids = [str(item).strip() for item in settings.assign_admin_ids if str(item).strip()]
+         self._load_id_map()
+         self._worker = asyncio.create_task(self._run(), name="qq-official-adapter")
++        self._paid_owner_start = asyncio.create_task(self._start_paid_owner_gateway())
++
++    async def _start_paid_owner_gateway(self):
++        try:
++            from .paid_owner_gateway import start
++            self._paid_owner_server = await start(self)
++        except Exception:
++            self.ctx.logger.warning('paid_owner_gateway_unavailable')
+ 
+     async def _stop(self) -> None:
++        if self._paid_owner_start:
++            self._paid_owner_start.cancel()
++            with suppress(asyncio.CancelledError):
++                await self._paid_owner_start
++            self._paid_owner_start = None
++        if self._paid_owner_server:
++            from .paid_owner_gateway import stop
++            await stop(self._paid_owner_server)
++            self._paid_owner_server = None
+         worker = self._worker
+         self._worker = None
+         if worker is not None:
