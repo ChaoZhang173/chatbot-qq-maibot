@@ -1,0 +1,16 @@
+{
+  "enabled": {
+    "dynamic": true,
+    "proactive": true,
+    "reply": true,
+    "dm": false
+  },
+  "limits": {
+    "dynamic": 10,
+    "proactive": 6,
+    "reply": 20,
+    "dm": 20
+  },
+  "paused": false,
+  "model_daily": 80
+}

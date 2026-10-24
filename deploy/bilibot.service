@@ -1,0 +1,46 @@
+[Unit]
+Description=Bounded Bilibili character bot
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/srv/bilibot/private/account.json
+ConditionPathExists=/srv/bilibot/private/bili-credentials.json
+ConditionPathExists=/srv/bilibot/acceptance.ready
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=bilibot
+Group=bilibot
+SupplementaryGroups=bilibot-bridge
+WorkingDirectory=/opt/bilibot/app
+ExecStart=/opt/bilibot/venv/bin/python -m phase2.runner --config /srv/bilibot/private/config.json --state /srv/bilibot/state --private /srv/bilibot/private run
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=60
+UMask=0077
+Environment=TZ=Asia/Shanghai
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/srv/bilibot
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/bilibot/state /srv/bilibot/logs /srv/bilibot/bridge
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryAccounting=true
+MemoryHigh=192M
+MemoryMax=256M
+MemorySwapMax=64M
+CPUQuota=35%
+Nice=10
+OOMScoreAdjust=500
+TasksMax=24
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=60
+LogRateLimitBurst=12
+
+[Install]
+WantedBy=multi-user.target

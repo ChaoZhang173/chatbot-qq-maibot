@@ -1,0 +1,25 @@
+{
+  "plugin": {
+    "enabled": true,
+    "config_version": "0.4.1"
+  },
+  "qq_official": {
+    "app_id": "REPLACE_PRIVATELY",
+    "app_secret": "",
+    "api_base_url": "https://api.bot.qq.com",
+    "reconnect_delay_sec": 5.0,
+    "assign_admin_ids": [],
+    "unified_account_id": "REPLACE_PRIVATELY"
+  },
+  "mute": {
+    "enabled": false,
+    "allowed_groups": [],
+    "admin_users": [],
+    "min_duration": 60,
+    "max_duration": 2592000
+  },
+  "recall": {
+    "enabled": false,
+    "allowed_groups": []
+  }
+}

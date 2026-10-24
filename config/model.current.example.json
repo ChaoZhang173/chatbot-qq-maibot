@@ -1,0 +1,162 @@
+{
+  "inner": {
+    "version": "1.17.22"
+  },
+  "web": {
+    "preview_chars": 4000,
+    "services": {}
+  },
+  "models": [
+    {
+      "name": "deepseek-flash",
+      "model_identifier": "deepseek-flash",
+      "api_provider": "deepseek",
+      "visual": true,
+      "model_type": "llm",
+      "extra_params": {
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    },
+    {
+      "name": "phase25-memory-embedding",
+      "model_type": "embedding",
+      "model_identifier": "BAAI/bge-m3",
+      "api_provider": "phase25-siliconflow-embedding",
+      "price_in": 0.0,
+      "price_out": 0.0,
+      "extra_params": {}
+    }
+  ],
+  "model_task_config": {
+    "web_search": {
+      "model_list": []
+    },
+    "replyer": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 1536,
+      "temperature": 0.9,
+      "selection_strategy": "random",
+      "hard_timeout": 90.0
+    },
+    "planner": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "selection_strategy": "random",
+      "hard_timeout": 90.0
+    },
+    "memory": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.3,
+      "selection_strategy": "random",
+      "hard_timeout": 90.0
+    },
+    "mid_memory": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "random",
+      "hard_timeout": 90.0
+    },
+    "utils": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.5,
+      "selection_strategy": "random",
+      "hard_timeout": 90.0
+    },
+    "learner": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "fast_model": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.3,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "emoji": {
+      "model_list": [],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "vlm": {
+      "model_list": [
+        "deepseek-flash"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "voice": {
+      "model_list": [],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "embedding": {
+      "model_list": [
+        "phase25-memory-embedding"
+      ],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    },
+    "image_embedding": {
+      "model_list": [],
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "selection_strategy": "balance",
+      "hard_timeout": 90.0
+    }
+  },
+  "api_providers": [
+    {
+      "name": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "",
+      "client_type": "openai",
+      "max_retry": 2,
+      "timeout": 60,
+      "retry_interval": 4
+    },
+    {
+      "name": "phase25-siliconflow-embedding",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "",
+      "client_type": "openai",
+      "auth_type": "bearer",
+      "max_retry": 1,
+      "timeout": 30,
+      "retry_interval": 1,
+      "default_headers": {},
+      "default_query": {}
+    }
+  ]
+}

@@ -1,0 +1,431 @@
+"""Explicit, plugin-scoped RPC into the *running Host's* MemoryService.
+
+Install as src/plugin_runtime/capabilities/unified_memory.py in MaiBot 1.3.14.
+Never import this module's memory backend in a plugin runner or open A_Memorix
+files directly. Scope authorization and evidence filtering belong to the core;
+this adapter preserves provenance and does not return whole-profile summaries.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import math
+from typing import Any
+
+PLUGIN_ID = "local.unified-core"
+CORRECTION_OWNER = PLUGIN_ID + "/scoped-correction-v1/"
+
+
+def _text(value: Any, name: str, maximum: int = 512, required=False) -> str:
+    if value is None:
+        value = ""
+    if not isinstance(value, str) or len(value) > maximum or (required and not value.strip()):
+        raise ValueError("invalid_" + name)
+    return value.strip()
+
+
+def _number(value: Any, name: str):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError("invalid_" + name)
+    return value
+
+
+def _limit(value: Any, default=10, maximum=50) -> int:
+    if value is None:
+        return default
+    if type(value) is not int or not 1 <= value <= maximum:
+        raise ValueError("invalid_limit")
+    return value
+
+
+def _strings(value: Any, name: str, maximum=30) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > maximum:
+        raise ValueError("invalid_" + name)
+    return [_text(item, name, required=True) for item in value]
+
+
+def _args(raw, allowed):
+    if not isinstance(raw, dict):
+        raise ValueError("arguments_must_be_object")
+    unknown = set(raw) - set(allowed) - {"operation"}
+    if unknown:
+        raise ValueError("unsupported_arguments")
+
+
+def _evidence_only(result: dict) -> dict:
+    """The upstream profile ignores chat_id; never return its global prose."""
+    evidence = []
+    for item in result.get("evidence", []):
+        if isinstance(item, dict):
+            evidence.append({key: value for key, value in item.items() if key != "raw"})
+    return {
+        "success": bool(result.get("success")),
+        "person_id": result.get("person_id", ""),
+        "profile_version": result.get("profile_version"),
+        "updated_at": result.get("updated_at"),
+        "evidence": evidence,
+        "error": result.get("error", ""),
+        "requires_scope_filter": True,
+    }
+
+
+def _hydrate_search_paragraphs(payload: dict, store) -> dict:
+    """Restore provenance omitted by native sparse/dual-path result builders.
+
+    Read only the active Host-owned store. Retrieval telemetry must never supply
+    permission metadata such as chat_id/public_summary. Other result types keep
+    their existing metadata and still require the core's final scope filter.
+    """
+    hits = []
+    for hit in payload.get("hits", []):
+        if not isinstance(hit, dict):
+            continue
+        if hit.get("type") != "paragraph":
+            hits.append(hit)
+            continue
+        if store is None:
+            continue
+        hash_value = hit.get("hash")
+        if not isinstance(hash_value, str) or not hash_value or len(hash_value) > 128:
+            continue
+        row = store.get_paragraph(hash_value)
+        if not row or row.get("is_deleted") or row.get("deleted_at"):
+            continue
+        metadata = row.get("metadata") or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (ValueError, TypeError):
+                continue
+        if not isinstance(metadata, dict):
+            continue
+        hydrated = dict(hit)
+        hydrated["content"] = str(row.get("content") or "")
+        hydrated["source"] = str(row.get("source") or "")
+        hydrated["metadata"] = dict(metadata)
+        hits.append(hydrated)
+    return {**payload, "hits": hits, "summary": "", "requires_scope_filter": True}
+
+
+def _correction_target_snapshot(store, target, person_id, chat_id):
+    """Authorize exact Host rows, never retrieval/model supplied provenance."""
+    kind, hash_value = target["type"], target["hash"]
+    row = store.get_paragraph(hash_value) if kind == "paragraph" else store.get_relation(hash_value, include_inactive=True)
+    if not row or row.get("is_deleted") or row.get("deleted_at"):
+        raise ValueError("correction_target_unavailable")
+    metadata = row.get("metadata") or {}
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+    if not isinstance(metadata, dict):
+        raise ValueError("correction_provenance_required")
+    persons = set(_strings(metadata.get("person_ids"), "person_ids"))
+    chats = set(_strings(metadata.get("chat_ids"), "chat_ids"))
+    if metadata.get("person_id"):
+        persons.add(_text(metadata["person_id"], "person_id", required=True))
+    for key in ("chat_id", "source_chat_id"):
+        if metadata.get(key):
+            chats.add(_text(metadata[key], key, required=True))
+    source = str(row.get("source") or "")
+    # Native automatic summaries have no person IDs. Their authority is the
+    # exact chat source, not an inferred person identity from free-form prose.
+    is_chat_summary = (kind == "paragraph" and source == "chat_summary:" + chat_id and
+                       metadata.get("source_type", metadata.get("kind")) == "chat_summary")
+    if chats != {chat_id} or (persons and persons != {person_id}) or (not persons and not is_chat_summary):
+        raise PermissionError("correction_target_scope_mismatch")
+    payload = {"source": source, "content": row.get("content"),
+               "subject": row.get("subject"), "predicate": row.get("predicate"), "object": row.get("object")}
+    digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    return {"type": kind, "hash": hash_value, "content_sha256": digest}
+
+
+def _correction_owner(manifest):
+    return CORRECTION_OWNER + base64.urlsafe_b64encode(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()).decode()
+
+
+def _checked_correction_plan(record, store):
+    """Durable preview closure survives Host restarts; unrelated plans cannot run."""
+    owner = record.get("requested_by") if isinstance(record, dict) else None
+    if not isinstance(owner, str) or not owner.startswith(CORRECTION_OWNER) or len(owner) > 16000:
+        raise PermissionError("correction_preview_owner_required")
+    try:
+        manifest = json.loads(base64.urlsafe_b64decode(owner[len(CORRECTION_OWNER):]))
+        if set(manifest) != {"person_id", "chat_id", "targets"}:
+            raise ValueError()
+        person_id = _text(manifest["person_id"], "person_id", required=True)
+        chat_id = _text(manifest["chat_id"], "chat_id", required=True)
+        targets = manifest["targets"]
+        if not isinstance(targets, list) or not 1 <= len(targets) <= 10:
+            raise ValueError()
+        for target in targets:
+            if (not isinstance(target, dict) or set(target) != {"type", "hash", "content_sha256"}
+                    or target["type"] not in {"paragraph", "relation"}):
+                raise ValueError()
+            if _correction_target_snapshot(store, target, person_id, chat_id) != target:
+                raise ValueError("correction_target_changed_since_preview")
+    except PermissionError:
+        raise
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ValueError("invalid_or_stale_correction_preview") from exc
+    plan = record.get("plan") or {}
+    expected = {(target["type"], target["hash"]) for target in targets}
+    operations = plan.get("operations")
+    if (plan.get("scope") != "memory" or plan.get("person_id") or plan.get("chat_id") or
+            not isinstance(operations, list) or not operations):
+        raise ValueError("invalid_correction_plan_scope")
+    marked = set()
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("invalid_correction_operation")
+        if operation.get("action") == "mark_superseded":
+            target = (operation.get("target_type"), operation.get("hash"))
+            if target not in expected or target in marked:
+                raise ValueError("correction_operation_outside_preview")
+            marked.add(target)
+        elif operation.get("action") == "refresh_person_profile" and operation.get("person_id") == person_id:
+            pass
+        else:
+            # This administrative capability currently invalidates exact
+            # evidence only. It cannot invent replacement facts or new targets.
+            raise ValueError("unsupported_correction_operation")
+    if marked != expected:
+        raise ValueError("correction_plan_does_not_cover_exact_targets")
+    return manifest
+
+
+async def unified_memory(plugin_id: str, capability: str, args: dict) -> dict:
+    if plugin_id != PLUGIN_ID or capability != "unified.memory":
+        raise PermissionError("unified_memory_plugin_not_authorized")
+    if not isinstance(args, dict):
+        raise ValueError("arguments_must_be_object")
+    operation = args.get("operation")
+    # Import only inside Host RPC, using its existing singleton.
+    from src.services.memory_service import memory_service
+
+    if operation == "status":
+        _args(args, [])
+        return await memory_service.memory_stats()
+
+    if operation == "source_list":
+        _args(args, ["limit"])
+        result = await memory_service.source_admin(action="list")
+        result["items"] = list(result.get("items", []))[:_limit(args.get("limit"), 100, 500)]
+        return result
+
+    if operation == "paragraph_get":
+        _args(args, ["hash"])
+        from src.A_memorix.runtime_registry import get_runtime_kernel
+        kernel = get_runtime_kernel()
+        store = getattr(kernel, "metadata_store", None)
+        if store is None:
+            return {"success": False, "error": "memory_runtime_not_ready"}
+        # This is a read via the already running Host-owned store; no new
+        # sqlite connection, runtime initialization, or vector index is created.
+        row = store.get_paragraph(_text(args.get("hash"), "hash", 128, required=True))
+        if not row or row.get("is_deleted") or row.get("deleted_at"):
+            return {"success": False, "error": "active_paragraph_not_found"}
+        return {"success": True, "paragraph": {
+            key: value for key, value in row.items()
+            if key in {"hash", "content", "source", "created_at", "updated_at", "metadata"}
+        }, "requires_scope_filter": True}
+
+    if operation == "expression_list":
+        _args(args, ["session_id", "limit"])
+        from src.services import database_service
+        from src.common.database.database_model import Expression
+        rows = await database_service.db_get(
+            model_class=Expression, filters={"session_id": _text(args.get("session_id"), "session_id", required=True)},
+            limit=_limit(args.get("limit"), 20), order_by=["-last_active_time"],
+        )
+        return {"success": True, "items": rows or []}
+
+    if operation == "jargon_list":
+        _args(args, ["session_id", "limit"])
+        from src.services import database_service
+        from src.common.database.database_model import Jargon
+        session_id = _text(args.get("session_id"), "session_id", required=True)
+        rows = await database_service.db_get(
+            model_class=Jargon, filters={"is_jargon": True}, limit=200,
+            order_by=["-updated_timestamp"],
+        )
+        scoped = []
+        for row in rows or []:
+            try:
+                origins = json.loads(row.get("session_id_dict") or "{}")
+            except (ValueError, TypeError):
+                continue
+            # is_global alone is not permission to disclose another group.
+            if isinstance(origins, dict) and session_id in origins:
+                scoped.append(row)
+        return {"success": True, "items": scoped[:_limit(args.get("limit"), 20)]}
+
+    if operation == "search":
+        _args(args, ["query", "chat_id", "person_id", "limit", "time_start", "time_end", "mode", "user_id", "group_id"])
+        mode = args.get("mode", "search")
+        if mode not in {"search", "time", "hybrid", "episode", "aggregate"}:
+            raise ValueError("invalid_search_mode")
+        result = await memory_service.search(
+            _text(args.get("query", ""), "query", 1000),
+            chat_id=_text(args.get("chat_id"), "chat_id", required=True),
+            person_id=_text(args.get("person_id", ""), "person_id"),
+            limit=_limit(args.get("limit"), 5, 20), mode=mode, respect_filter=True,
+            time_start=_number(args.get("time_start"), "time_start"),
+            time_end=_number(args.get("time_end"), "time_end"),
+            user_id=_text(args.get("user_id", ""), "user_id"),
+            group_id=_text(args.get("group_id", ""), "group_id"),
+        )
+        from src.A_memorix.runtime_registry import get_runtime_kernel
+        kernel = get_runtime_kernel()
+        return _hydrate_search_paragraphs(result.to_dict(), getattr(kernel, "metadata_store", None))
+
+    if operation == "ingest_text":
+        _args(args, ["external_id", "source_type", "text", "chat_id", "person_ids", "participants", "timestamp", "time_start", "time_end", "tags", "metadata", "user_id", "group_id"])
+        metadata = args.get("metadata") or {}
+        if not isinstance(metadata, dict) or len(json.dumps(metadata, ensure_ascii=False)) > 12000:
+            raise ValueError("invalid_metadata")
+        result = await memory_service.ingest_text(
+            external_id=_text(args.get("external_id"), "external_id", required=True),
+            source_type=_text(args.get("source_type"), "source_type", 64, required=True),
+            text=_text(args.get("text"), "text", 24000, required=True),
+            chat_id=_text(args.get("chat_id"), "chat_id", required=True),
+            person_ids=_strings(args.get("person_ids"), "person_ids"),
+            participants=_strings(args.get("participants"), "participants"),
+            timestamp=_number(args.get("timestamp"), "timestamp"),
+            time_start=_number(args.get("time_start"), "time_start"),
+            time_end=_number(args.get("time_end"), "time_end"),
+            tags=_strings(args.get("tags"), "tags"), metadata=metadata, respect_filter=True,
+            user_id=_text(args.get("user_id", ""), "user_id"),
+            group_id=_text(args.get("group_id", ""), "group_id"),
+        )
+        return result.to_dict()
+
+    if operation == "profile_evidence":
+        _args(args, ["person_id", "limit"])
+        result = await memory_service.profile_admin(
+            action="evidence", person_id=_text(args.get("person_id"), "person_id", required=True),
+            limit=_limit(args.get("limit"), 12), force_refresh=False,
+        )
+        return _evidence_only(result)
+
+    if operation == "correct_profile_evidence":
+        _args(args, ["person_id", "evidence_type", "hash", "reason"])
+        result = await memory_service.profile_admin(
+            action="correct_evidence", person_id=_text(args.get("person_id"), "person_id", required=True),
+            evidence_type=_text(args.get("evidence_type"), "evidence_type", 64, required=True),
+            hash=_text(args.get("hash"), "hash", required=True),
+            reason=_text(args.get("reason"), "reason", 1000, required=True),
+            requested_by=PLUGIN_ID, refresh=True, limit=12,
+        )
+        # Correction may include a refreshed global profile: return status only.
+        return {key: value for key, value in result.items()
+                if key in {"success", "error", "person_id", "hash", "deleted", "refresh_queued", "operation_id"}}
+
+    if operation == "fact_list":
+        _args(args, ["scope_id", "statuses", "limit"])
+        statuses = _strings(args.get("statuses", ["active"]), "statuses", 5)
+        return await memory_service.fact_admin(
+            action="list", scope_type="person", scope_id=_text(args.get("scope_id"), "scope_id", required=True),
+            statuses=statuses, limit=_limit(args.get("limit"), 30, 100),
+        )
+
+    if operation == "fact_get":
+        _args(args, ["claim_id"])
+        return await memory_service.fact_admin(action="get", claim_id=_text(args.get("claim_id"), "claim_id", required=True))
+
+    if operation in {"fact_create", "fact_update"}:
+        fields = {"fact_key", "value_text", "polarity", "cardinality", "stability", "profile_section", "confidence", "valid_from", "valid_to", "reason"}
+        _args(args, fields | ({"scope_id"} if operation == "fact_create" else {"claim_id"}))
+        values = {}
+        for key in fields & args.keys():
+            values[key] = _number(args[key], key) if key in {"confidence", "valid_from", "valid_to"} else _text(args[key], key, 2000, required=True)
+        confidence = values.get("confidence")
+        if confidence is not None and not 0 <= confidence <= 1:
+            raise ValueError("invalid_confidence")
+        values["reason"] = _text(args.get("reason"), "reason", 1000, required=True)
+        values["updated_by"] = PLUGIN_ID
+        if operation == "fact_create":
+            values.update(scope_type="person", scope_id=_text(args.get("scope_id"), "scope_id", required=True))
+            for key in ("fact_key", "value_text"):
+                values[key] = _text(args.get(key), key, 2000, required=True)
+            values["authority"] = "direct_user"
+        else:
+            values["claim_id"] = _text(args.get("claim_id"), "claim_id", required=True)
+        return await memory_service.fact_admin(action=operation.removeprefix("fact_"), **values)
+
+    if operation in {"fact_retract", "fact_restore"}:
+        _args(args, ["claim_id", "reason"])
+        return await memory_service.fact_admin(
+            action=operation.removeprefix("fact_"), claim_id=_text(args.get("claim_id"), "claim_id", required=True),
+            reason=_text(args.get("reason"), "reason", 1000, required=True), requested_by=PLUGIN_ID,
+        )
+
+    if operation == "correction_preview":
+        _args(args, ["request_text", "person_id", "chat_id", "targets", "limit", "reason"])
+        targets = args.get("targets")
+        if not isinstance(targets, list) or not 1 <= len(targets) <= 10:
+            raise ValueError("explicit_correction_targets_required")
+        for target in targets:
+            if (not isinstance(target, dict) or set(target) != {"type", "hash"}
+                    or target["type"] not in {"paragraph", "relation"}):
+                raise ValueError("invalid_correction_target")
+            _text(target["hash"], "hash", 128, required=True)
+        from src.A_memorix.runtime_registry import get_runtime_kernel
+        store = getattr(get_runtime_kernel(), "metadata_store", None)
+        if store is None:
+            return {"success": False, "error": "memory_runtime_not_ready"}
+        person_id = _text(args.get("person_id"), "person_id", required=True)
+        chat_id = _text(args.get("chat_id"), "chat_id", required=True)
+        snapshots = [_correction_target_snapshot(store, target, person_id, chat_id) for target in targets]
+        if len({(target["type"], target["hash"]) for target in targets}) != len(targets):
+            raise ValueError("duplicate_correction_targets")
+        manifest = {"person_id": person_id, "chat_id": chat_id, "targets": snapshots}
+        owner = _correction_owner(manifest)
+        request_text = _text(args.get("request_text"), "request_text", 2000, required=True)
+        request_text += "\n只将每个选中目标标记为失效(mark_superseded)，保留历史记录，不新增或替换任何事实(禁止ingest_text)，不得选择列表外目标；可以刷新且只刷新人物画像 " + person_id + "。"
+        result = await memory_service.memory_correction_admin(
+            action="preview", request_text=request_text, scope="memory",
+            targets=[{"type": target["type"], "id": target["hash"]} for target in targets],
+            limit=_limit(args.get("limit"), 10, 20), requested_by=owner,
+            reason=_text(args.get("reason"), "reason", 1000, required=True),
+        )
+        if result.get("success"):
+            _checked_correction_plan(result.get("plan"), store)
+            result["authorized_scope"] = manifest
+        return result
+
+    if operation in {"correction_execute", "correction_rollback"}:
+        _args(args, ["plan_id", "reason", "confirmed"])
+        if operation == "correction_execute" and args.get("confirmed") is not True:
+            raise ValueError("explicit_correction_confirmation_required")
+        from src.A_memorix.runtime_registry import get_runtime_kernel
+        store = getattr(get_runtime_kernel(), "metadata_store", None)
+        if store is None:
+            return {"success": False, "error": "memory_runtime_not_ready"}
+        plan_id = _text(args.get("plan_id"), "plan_id", required=True)
+        existing = await memory_service.memory_correction_admin(action="get", plan_id=plan_id)
+        if not existing.get("success"):
+            return existing
+        record = existing.get("plan")
+        manifest = _checked_correction_plan(record, store)
+        values = {"action": operation.removeprefix("correction_"),
+                  "plan_id": plan_id,
+                  "requested_by": PLUGIN_ID,
+                  "reason": _text(args.get("reason"), "reason", 1000, required=True)}
+        if operation == "correction_execute":
+            values["confirmed"] = True
+        result = await memory_service.memory_correction_admin(**values)
+        if result.get("success") and (operation == "correction_rollback" or not any(
+                item.get("action") == "refresh_person_profile" for item in record["plan"]["operations"])):
+            # Native selected-memory plans intentionally have no target_person_id;
+            # their rollback would otherwise leave this person's snapshot stale.
+            refreshed = await memory_service.profile_admin(action="evidence", person_id=manifest["person_id"],
+                                                            force_refresh=True, limit=1)
+            result["scoped_profile_refresh"] = {key: refreshed.get(key) for key in ("success", "error", "profile_version")}
+        return result
+
+    raise ValueError("unsupported_unified_memory_operation")

@@ -1,0 +1,17 @@
+{
+  "qq_bot_account": "REPLACE_WITH_BOT_ACCOUNT",
+  "qq_group_sessions": {},
+  "qq_owner_bindings": {},
+  "allowed_qq_sessions": [],
+  "bili_bot_uid": "REPLACE_WITH_BILI_UID",
+  "bili_uid": -1,
+  "qq_private_familiar_enabled": false,
+  "qq_commands_enabled": false,
+  "learning_enabled": false,
+  "reflection_enabled": false,
+  "persona_updates_enabled": false,
+  "qq_reply_policy": {
+    "enabled": false,
+    "casual_probability": 0.7
+  }
+}

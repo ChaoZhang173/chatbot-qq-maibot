@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily local unified chatbot state backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+AccuracySec=5min
+RandomizedDelaySec=5min
+Persistent=true
+Unit=unified-state-backup.service
+
+[Install]
+WantedBy=timers.target

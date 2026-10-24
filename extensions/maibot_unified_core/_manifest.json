@@ -1,0 +1,41 @@
+{
+  "manifest_version": 2,
+  "id": "local.unified-core",
+  "version": "0.1.0",
+  "name": "QQ与B站统一记忆核心",
+  "description": "唯一的有范围约束的记忆、人设、学习与跨平台决策入口。",
+  "author": {
+    "name": "Local deployment",
+    "url": "https://github.com/ChaoZhang173"
+  },
+  "license": "MIT",
+  "plugin_type": "general",
+  "host_application": {
+    "min_version": "1.3.14",
+    "max_version": "1.3.14"
+  },
+  "sdk": {
+    "min_version": "2.16.0",
+    "max_version": "2.16.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "llm.generate",
+    "config.get",
+    "person.get_id",
+    "chat.get_all_streams",
+    "message.get_recent",
+    "unified.memory",
+    "send.text",
+    "send.image"
+  ],
+  "urls": {
+    "repository": "https://github.com/Mai-with-u/MaiBot"
+  },
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  }
+}

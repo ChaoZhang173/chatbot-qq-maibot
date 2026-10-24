@@ -1,0 +1,24 @@
+[Unit]
+Description=Bounded local backup of unified chatbot state
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/libexec/maibot-unified-state-backup.py --retain 3
+TimeoutStartSec=15min
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=192M
+CPUQuota=25%
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# SQLite WAL readers may create shared-memory sidecars even with mode=ro.
+# Source connections remain read-only; preserve WAL locking and committed data.
+ReadWritePaths=/var/backups/maibot-unified /srv/maibot/data /srv/maibot/unified /srv/bilibot/state
+RestrictAddressFamilies=AF_UNIX
+StandardOutput=journal
+StandardError=journal

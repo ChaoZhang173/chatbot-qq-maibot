@@ -1,0 +1,8 @@
+{
+  "files": 103,
+  "known_credential_scan_pass": true,
+  "syntax_parse_pass": true,
+  "server_source_files_verified": 44,
+  "raw_private_config_exported": false,
+  "live_transaction_test": false
+}

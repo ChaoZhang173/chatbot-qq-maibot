@@ -1,0 +1,512 @@
+[
+  {
+    "path": ".gitignore",
+    "sha256": "8ea9858ebe54cb20c420ad2f8624be9bd67c8608dc0655183a521ac4afff84e2",
+    "bytes": 357
+  },
+  {
+    "path": "README.md",
+    "sha256": "49d40ac15c8d9f93a16471c36f6a4c46e3c398e1a7c16cb3bdc84f2bb87b859e",
+    "bytes": 2300
+  },
+  {
+    "path": "UPSTREAM.md",
+    "sha256": "1a44132cf9b0aefa98d184bb166fcb97314010efb56bd65407c3c38d9abb5c12",
+    "bytes": 616
+  },
+  {
+    "path": "config/adapter_policy.example.toml",
+    "sha256": "3a6c774b016a4df2c4a26edadcd82457f4ba06896189b5c0fa267293cdb97e76",
+    "bytes": 423
+  },
+  {
+    "path": "config/bilibili.current.example.json",
+    "sha256": "6cfdc592af0ed0b862316ee03f8470a3e96483f1cf18f8ef12f65f463696379d",
+    "bytes": 230
+  },
+  {
+    "path": "config/bot.current.example.json",
+    "sha256": "c71d79889feb607122ee86935622a9f2780f9add0e15674893cf0bdf19456bf5",
+    "bytes": 7035
+  },
+  {
+    "path": "config/bot.profile.toml",
+    "sha256": "7aa71a6f5d19b97f57724dfb536a95ed57d5ae9074e9feb5618d1b5ff89b182e",
+    "bytes": 12831
+  },
+  {
+    "path": "config/model.current.example.json",
+    "sha256": "f226fbdc9a62bb0ff3a43442186f13d8cfac20912fae5be2c2ee645db29cb3cf",
+    "bytes": 3567
+  },
+  {
+    "path": "config/model_config.example.toml",
+    "sha256": "16cf2e4c61026d901cefc606bb665746a7965fc2f9fa8f64fa1be03fe3904d40",
+    "bytes": 2115
+  },
+  {
+    "path": "config/persona_revision_20261024.json",
+    "sha256": "d1e9497028617c739867130a5b4c6cfa0657eda33871c82952228f2626af529e",
+    "bytes": 6574
+  },
+  {
+    "path": "config/qq.current.example.json",
+    "sha256": "fe5cf684c9e037ec879ba92c3532d3b57d45f4c8c8e2925daf10828d4ddfc6f7",
+    "bytes": 512
+  },
+  {
+    "path": "config/qq_adapter.example.toml",
+    "sha256": "e9023289ff5e94ca6d37de87ff793d865c654b411564358c0758ad5a35f014ee",
+    "bytes": 373
+  },
+  {
+    "path": "config/unified.current.example.json",
+    "sha256": "e420910bd922bf92d6c893b6ce57ce4b25ee0233410a86f3b869b5f27e3174a1",
+    "bytes": 3450
+  },
+  {
+    "path": "config/unified.policy.example.json",
+    "sha256": "c97e6dd56c47060d47c34f02ed338b5ff3548e954c020daf3f854a9da32bb3aa",
+    "bytes": 443
+  },
+  {
+    "path": "deploy/bilibot.service",
+    "sha256": "4bf1f3498745289e4a839eb78ba78f72b4502e14a0e6a1dc0850565e0814e46d",
+    "bytes": 1236
+  },
+  {
+    "path": "deploy/maibot.service",
+    "sha256": "9dc0daa28a7ac00e47211e59b38677595f3b1f0262d7f32ce89d3caa19c0941a",
+    "bytes": 1292
+  },
+  {
+    "path": "deploy/unified-state-backup.service",
+    "sha256": "94e737c2536efdca08b696f4fca88f21cf4c199113fad8e4437053f19e848658",
+    "bytes": 706
+  },
+  {
+    "path": "deploy/unified-state-backup.timer",
+    "sha256": "d8d43c131f7dde3cef0617c0be1a27da8c3662dc68dafaea96808beee204b196",
+    "bytes": 234
+  },
+  {
+    "path": "docs/BASELINE-20261023.zh.md",
+    "sha256": "369122a6a54483622943d616f7e68f79cc75e76ef45cad962d891e722f19356c",
+    "bytes": 4640
+  },
+  {
+    "path": "docs/OPERATIONS.zh.md",
+    "sha256": "18b677ec9c63145c3828d87ffeecf24c51064bb0110a934376d9418e9589507f",
+    "bytes": 4997
+  },
+  {
+    "path": "docs/SNAPSHOT-20261024.zh.md",
+    "sha256": "958934133a8f56670c7e98f60ae55211ba2150c33dbcc8c1aa093b88ef38598b",
+    "bytes": 1904
+  },
+  {
+    "path": "docs/snapshot-validation.json",
+    "sha256": "6a2c19dc59fad629bdb8b50851ebf431ea328729aff79dd9901ff6364003e864",
+    "bytes": 198
+  },
+  {
+    "path": "extensions/maibot_unified_core/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "extensions/maibot_unified_core/_manifest.json",
+    "sha256": "87a75e1d5c6e38ca44d3438d5b33e0ab10b71d478acfaf305bddd3d46898dcd1",
+    "bytes": 909
+  },
+  {
+    "path": "extensions/maibot_unified_core/account_schema.py",
+    "sha256": "eeae1861a7b0c46852cb64a4ad8c3e74da6b7aee37083e7d7e46b81fd95aae63",
+    "bytes": 4102
+  },
+  {
+    "path": "extensions/maibot_unified_core/autonomy.py",
+    "sha256": "481c5bbe415e3c3a9e47f26880e509750169010f4db77006941139d142762647",
+    "bytes": 4364
+  },
+  {
+    "path": "extensions/maibot_unified_core/command_planner.py",
+    "sha256": "d2703df3272b760f6cb372d88a0ef1ae80a03f446dc13f45bde109e0d3a25adb",
+    "bytes": 10486
+  },
+  {
+    "path": "extensions/maibot_unified_core/command_schema.py",
+    "sha256": "1234b59d515894c2dc10aeb71d9fa05f98b38840dcf628ada51be783b54ed79b",
+    "bytes": 9553
+  },
+  {
+    "path": "extensions/maibot_unified_core/commands.py",
+    "sha256": "334089700ca872a3516849c7ff2d4decbbf66288b7b6fa88d99f722d27c474b5",
+    "bytes": 20464
+  },
+  {
+    "path": "extensions/maibot_unified_core/content_rules.py",
+    "sha256": "3fe991b3ebaeb748f0ed1364b55a0b3d710c5a244dcd4c146f11af59ec6c2b4c",
+    "bytes": 2403
+  },
+  {
+    "path": "extensions/maibot_unified_core/control.py",
+    "sha256": "deff8b990e32a5d11f3bbec99ff8f84ffbc8d349eef2e37b861e1e2d96514917",
+    "bytes": 1160
+  },
+  {
+    "path": "extensions/maibot_unified_core/host_adapter.py",
+    "sha256": "2ffdad1f0b228ed2554db6bb0ad22acddb44c9e42e40527693fd3f7ddbe92a63",
+    "bytes": 22388
+  },
+  {
+    "path": "extensions/maibot_unified_core/host_patch.py",
+    "sha256": "a82b3ebf10c30795fc7137c9c2d55181b5ee0a5d5bd6b20c8d92d178ce1d5358",
+    "bytes": 3589
+  },
+  {
+    "path": "extensions/maibot_unified_core/live.py",
+    "sha256": "d6836f4d0a939326e2ec34249ac01415909bfc7129eea409dd490db13318f463",
+    "bytes": 4768
+  },
+  {
+    "path": "extensions/maibot_unified_core/media.py",
+    "sha256": "8ad5815d5eb0b3c68b36c5dff4861fdac0ee01978d2142679c1502c73ac6ead0",
+    "bytes": 8864
+  },
+  {
+    "path": "extensions/maibot_unified_core/persona.py",
+    "sha256": "6643125ebc9fe32100d8370fe36403b75889bdb161569245704a6d6ab043f4b2",
+    "bytes": 6410
+  },
+  {
+    "path": "extensions/maibot_unified_core/plugin.py",
+    "sha256": "a4e94ee8fed4f1ebb915716dab4822cc271b43a939617f4346f9cda44e850cb3",
+    "bytes": 14708
+  },
+  {
+    "path": "extensions/maibot_unified_core/private_access.py",
+    "sha256": "626522a856ce0cfd4d7b49f276cbcabce5cdc9316ccb3b31332eb7b7fe053c41",
+    "bytes": 4899
+  },
+  {
+    "path": "extensions/maibot_unified_core/service.py",
+    "sha256": "8b3d544552459afed39f1ffff363b49b9687e3ea37fe519072fb9357ef63b9b5",
+    "bytes": 73894
+  },
+  {
+    "path": "extensions/maibot_unified_core/store.py",
+    "sha256": "3a23a82f0796435763f32f42d994133554a24ab73c4110433e691361e0876df2",
+    "bytes": 53460
+  },
+  {
+    "path": "extensions/maibot_unified_core/web_access.py",
+    "sha256": "ef8488d04dd001bc603ab404b1469072691fa17e19672a63f8cb92c725382524",
+    "bytes": 7551
+  },
+  {
+    "path": "extensions/phase2/__init__.py",
+    "sha256": "90b0a6746bb5886864f88ca51edaf5483c4cbc32007733f6adb3039f244d0934",
+    "bytes": 69
+  },
+  {
+    "path": "extensions/phase2/account.py",
+    "sha256": "b81612c1ed09d80a7dcb6989d4daa1d003840aebd65718d877e49c6a9d670790",
+    "bytes": 7416
+  },
+  {
+    "path": "extensions/phase2/account_schema.py",
+    "sha256": "eeae1861a7b0c46852cb64a4ad8c3e74da6b7aee37083e7d7e46b81fd95aae63",
+    "bytes": 4102
+  },
+  {
+    "path": "extensions/phase2/api.py",
+    "sha256": "f3462522b2c0a277f0346dc25ec741f762f1d69a8f1430986287c0141ef1b400",
+    "bytes": 30886
+  },
+  {
+    "path": "extensions/phase2/autonomy.py",
+    "sha256": "fadc5782b4448b6d1cee1afe4c01b1073694d0873af338d11509b6d22c200a36",
+    "bytes": 4858
+  },
+  {
+    "path": "extensions/phase2/boost.py",
+    "sha256": "f5815bf90376e13950096322f1f99dcd8b6a8164d75951106925a660b0cf8694",
+    "bytes": 7859
+  },
+  {
+    "path": "extensions/phase2/bridge.py",
+    "sha256": "9b17a2e679357c5e150455365d114a82b1d0a3c2ac7c2949daf5e59667497de5",
+    "bytes": 6614
+  },
+  {
+    "path": "extensions/phase2/command_schema.py",
+    "sha256": "1234b59d515894c2dc10aeb71d9fa05f98b38840dcf628ada51be783b54ed79b",
+    "bytes": 9553
+  },
+  {
+    "path": "extensions/phase2/commands.py",
+    "sha256": "7d141c415e677ba923a907c695f2d682ee86bd9d9a2e656965b9cbadb213abcd",
+    "bytes": 8468
+  },
+  {
+    "path": "extensions/phase2/content_rules.py",
+    "sha256": "3fe991b3ebaeb748f0ed1364b55a0b3d710c5a244dcd4c146f11af59ec6c2b4c",
+    "bytes": 2403
+  },
+  {
+    "path": "extensions/phase2/control.py",
+    "sha256": "8d3b19cec0a6737ee8117e860c8cc6bd49a96a9ab993da5d79d04d0f35898a8b",
+    "bytes": 1408
+  },
+  {
+    "path": "extensions/phase2/core.py",
+    "sha256": "2afb587da19c2cc2f7bd0796344d54fc6ef7a6a71970da33b11789a69b6297ea",
+    "bytes": 21322
+  },
+  {
+    "path": "extensions/phase2/engagement.py",
+    "sha256": "8d276cc614cdf828688365cf3a70ae5f93652847ef9579b2687909f7377780be",
+    "bytes": 19691
+  },
+  {
+    "path": "extensions/phase2/links.py",
+    "sha256": "39570b2aecae735cc955bc7aa6362bf123cc7bec37f7d16500eab491237e4aa0",
+    "bytes": 1027
+  },
+  {
+    "path": "extensions/phase2/live.py",
+    "sha256": "91f2c52b96b7e92e6de2ea8131da4c3a98a933a9ab86655acb63f8f29d1b58c7",
+    "bytes": 19941
+  },
+  {
+    "path": "extensions/phase2/login.py",
+    "sha256": "b2b72d727a9ef85e7573a20f894010af979572ff7c0d28ae20c01737baa6c77d",
+    "bytes": 9486
+  },
+  {
+    "path": "extensions/phase2/mentions.py",
+    "sha256": "f6adec4e5f5d47ec0c7bd08c87064b9257270b6efce94c190f3245f34538f328",
+    "bytes": 5836
+  },
+  {
+    "path": "extensions/phase2/model_probe.py",
+    "sha256": "d1a47c8ee2540d7f7b5f7662b7b04af052d4e69e6ea012daea86805e7e24a265",
+    "bytes": 2384
+  },
+  {
+    "path": "extensions/phase2/public_probe.py",
+    "sha256": "65031e8ef45fcd027550432fe5527eb9cb5ddc1343e045afcae60374724f0c02",
+    "bytes": 1984
+  },
+  {
+    "path": "extensions/phase2/runner.py",
+    "sha256": "42e60531d08180d878053e024341ba76ed892543820d0657ad86a2b91b1e47fd",
+    "bytes": 24016
+  },
+  {
+    "path": "extensions/phase2/unified.py",
+    "sha256": "6b7ebd8b36b0c060a77c79eb35dc8ed791e2ab4934db9d88ce4cd346369e27ef",
+    "bytes": 17743
+  },
+  {
+    "path": "extensions/qq_official_adapter/_manifest.json",
+    "sha256": "e8991db8ea875f2da70aadecf54b2207fdcd1053d466f00b49c96132dc3f783d",
+    "bytes": 1112
+  },
+  {
+    "path": "extensions/qq_official_adapter/codec.py",
+    "sha256": "94e70a7fde6b7bab22cfb53475dcb169a77228241b5cdb0786ecc4af60ec7022",
+    "bytes": 20560
+  },
+  {
+    "path": "extensions/qq_official_adapter/plugin.py",
+    "sha256": "b9563ef9ea85d66c2226cc92573c2bb7973ea9debb1081fe8c94efc4a5b094aa",
+    "bytes": 55770
+  },
+  {
+    "path": "extensions/qq_official_adapter/settings.py",
+    "sha256": "deb8b90ab58c1b7352f96904dbcbf7de44c797c136ea43938b036156afdb1524",
+    "bytes": 3201
+  },
+  {
+    "path": "extensions/tests_phase2/test_api.py",
+    "sha256": "13e183462517b3e9a4f7943a738782157a879432e438a6388d8b447b524a8d66",
+    "bytes": 8207
+  },
+  {
+    "path": "extensions/tests_phase2/test_bridge.py",
+    "sha256": "95b22e66bed79cd6c4c0ad5dbf63bacb8f37a9af6938c9a47fd52bdab4cc78ad",
+    "bytes": 6436
+  },
+  {
+    "path": "extensions/tests_phase2/test_login_ui.py",
+    "sha256": "4159fc111d0ef4627da288753ab476b2cbe9f479401d5ce5e1f85689e910a429",
+    "bytes": 6031
+  },
+  {
+    "path": "extensions/tests_phase2/test_reply_interest.py",
+    "sha256": "ce9b99a03b2f651babef63dd7d20fa1eb16a2fb9d460a3b9b272988a5530a8a5",
+    "bytes": 5653
+  },
+  {
+    "path": "extensions/tests_phase2/test_runtime.py",
+    "sha256": "7f4564e1486f20e63f7f39f9c01b61f771900753088dcc541035392679a18581",
+    "bytes": 11967
+  },
+  {
+    "path": "extensions/tests_phase25/test_activity_boost.py",
+    "sha256": "41db14a93f6ccd0643a03097c2b0e03aa89e93287d317aa8180a057d9a49e11d",
+    "bytes": 5811
+  },
+  {
+    "path": "extensions/tests_phase25/test_bili_incoming_mentions.py",
+    "sha256": "17577d71b27f8a28ae9abded5a48f57486631d299e317c3f41f932b0e555a71f",
+    "bytes": 6943
+  },
+  {
+    "path": "extensions/tests_phase25/test_bili_mentions.py",
+    "sha256": "9096eb9e27860b8a15b372eaf8bf786638786184d5e98a1dbfb8128b4353f86a",
+    "bytes": 12192
+  },
+  {
+    "path": "extensions/tests_phase25/test_bili_preview.py",
+    "sha256": "8de2f1ad3a918192c1a1ba33b39ad0ecc2efb0d82d579e046919430b014082c7",
+    "bytes": 4956
+  },
+  {
+    "path": "extensions/tests_phase25/test_bili_unified.py",
+    "sha256": "6ef1f348db418b407fe0cbe3516e7c39fe4ce5199f132014fe97496e2fb20e8d",
+    "bytes": 13275
+  },
+  {
+    "path": "extensions/tests_phase25/test_command_links.py",
+    "sha256": "0216731304ca84c4e5410eee7eb0390408a255460c8bdf28bd8243bc7bb14095",
+    "bytes": 5587
+  },
+  {
+    "path": "extensions/tests_phase25/test_commands_web_topics.py",
+    "sha256": "74ef691fb61881b9432d717b75c25fb4d95d67410fc28f1fba7aadd2d46da0bd",
+    "bytes": 15982
+  },
+  {
+    "path": "extensions/tests_phase25/test_device_session.py",
+    "sha256": "81a3527478e684e99459a020b0b505894455fc6fbac2dfaecbc97c90bd2bfb6b",
+    "bytes": 6750
+  },
+  {
+    "path": "extensions/tests_phase25/test_engagement.py",
+    "sha256": "026c55bb45d2563617820807e74947812163a4472678b610303bb630a5dd9ba0",
+    "bytes": 13412
+  },
+  {
+    "path": "extensions/tests_phase25/test_feature_update.py",
+    "sha256": "53a4fca26073c9a912b436ade0621de7440b08d5b896e419da3289b9658933db",
+    "bytes": 4502
+  },
+  {
+    "path": "extensions/tests_phase25/test_follow_account.py",
+    "sha256": "ce73d23fde7792458eb1c2efe3971342bdc68fa01d01af2d844732c4e770953c",
+    "bytes": 4925
+  },
+  {
+    "path": "extensions/tests_phase25/test_host_adapter.py",
+    "sha256": "453f9419e2020a2617996cc261bdd592d729d025bb0614bd29f5d9c4710d446f",
+    "bytes": 3230
+  },
+  {
+    "path": "extensions/tests_phase25/test_host_persona.py",
+    "sha256": "cd4f488b23f97d16b5651755f59a67927ea775c68fd575b7fbb6ff8d9b9d187a",
+    "bytes": 4577
+  },
+  {
+    "path": "extensions/tests_phase25/test_live_chat.py",
+    "sha256": "34384103ce1b78cec5ea7205c9856d2014c1f6b53d6097263421c23d8c4dbefb",
+    "bytes": 14642
+  },
+  {
+    "path": "extensions/tests_phase25/test_media_actions.py",
+    "sha256": "0e9cea357c6b38ab1b90638c2aedd9abf909aae9aa2397edb89c8ff8ea3681f7",
+    "bytes": 7002
+  },
+  {
+    "path": "extensions/tests_phase25/test_model_commands.py",
+    "sha256": "0fb6b720483300c3cfc17ddf5fff0f6cfcc72700ace932a0ddd5ab4062d259ce",
+    "bytes": 12555
+  },
+  {
+    "path": "extensions/tests_phase25/test_nickname_adjustment.py",
+    "sha256": "ff31414a2bf2989d63fcc25946933f1f150db3bd5ed40767a8ded23ea3b2bcf0",
+    "bytes": 5026
+  },
+  {
+    "path": "extensions/tests_phase25/test_operational.py",
+    "sha256": "63770cdacb5424a4350ea6aeb62ed2094ac198a9014a3744d410054e6ceab0e5",
+    "bytes": 14613
+  },
+  {
+    "path": "extensions/tests_phase25/test_persona_expansion.py",
+    "sha256": "ec7e210b82096f507d3f5e86d6ffbfe7044a5800040bc0eb65191e41869709a7",
+    "bytes": 10265
+  },
+  {
+    "path": "extensions/tests_phase25/test_private_settings_autonomy.py",
+    "sha256": "2d7b865162b1d9e3ca6011b1ca8c1da70720c28e3094fe3ee1846c370774ae8f",
+    "bytes": 15995
+  },
+  {
+    "path": "extensions/tests_phase25/test_service.py",
+    "sha256": "126a1402c49e2e71402286c4c80a901f91eafae65e15f971002e00f5b9c886bd",
+    "bytes": 23203
+  },
+  {
+    "path": "extensions/tests_phase25/test_store.py",
+    "sha256": "03763b6f9e4b308f0abf7c558c34c52b91275cf140af4ac5e8ae1cabcf797c5d",
+    "bytes": 27743
+  },
+  {
+    "path": "licenses/Bilibili-AI-Bot-LICENSE",
+    "sha256": "11f375cdf52cef22858c51b05a46a512b4f57c29715b14cde0657f83e4958e5f",
+    "bytes": 1068
+  },
+  {
+    "path": "licenses/QQ-Adapter-LICENSE",
+    "sha256": "1d0c99970f78b217bea76a225125d28ab746c94ccd894e7e6b7b964f12bb2e7f",
+    "bytes": 1068
+  },
+  {
+    "path": "patches/qq-is-you-compatibility.patch",
+    "sha256": "b9417e0fd5735e741541b4c9d20c60d128ab5613394f25d3539ea25dffaf61ac",
+    "bytes": 636
+  },
+  {
+    "path": "requirements-dev.txt",
+    "sha256": "c74123e87bb5829ec83701c905874763c37477db2965cdc716a0aff87714200f",
+    "bytes": 16
+  },
+  {
+    "path": "scripts/apply_profile.py",
+    "sha256": "5044d7d5ff25220268f64196d4b0f45367646ef519a8188b527c21545e7af8da",
+    "bytes": 5008
+  },
+  {
+    "path": "scripts/check_public_files.py",
+    "sha256": "0ad56d9118660f9b0e016d6edfea4631a0dcc4634d2d4d3756520681650f7f34",
+    "bytes": 3772
+  },
+  {
+    "path": "scripts/operational_backup_remote.py",
+    "sha256": "b3ea496a1cf579fe70feaca1d71a913d0445dd43293ac62ee3c79de6124d4852",
+    "bytes": 8571
+  },
+  {
+    "path": "tests/test_config_safety.py",
+    "sha256": "03602df5ce29d7b3f87856697d3b3c07b97380ea0006728baa53d8a632a54aaf",
+    "bytes": 2831
+  },
+  {
+    "path": "versions.json",
+    "sha256": "1e87aa5e9581dc0f9971fbac61408f36b011bec84f73aa3edf0bffb47cc61236",
+    "bytes": 308
+  }
+]

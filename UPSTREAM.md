@@ -5,3 +5,6 @@
 - 适配器基线提交: `7a0c321bfc65e157abdb5e8a10913181387b6081`
 - 本仓库只保存部署配置与小范围兼容补丁，不复制 MaiBot 主程序。
 - QQ 适配器补丁适用源文件的许可证见 `licenses/QQ-Adapter-LICENSE`。
+
+- Bilibili AI bot: https://github.com/chenluQwQ/bilibili-ai-bot ; source adaptation license: `licenses/Bilibili-AI-Bot-LICENSE`.
+- `extensions/` contains local deployment additions and adapted source; it is not a full upstream distribution.
