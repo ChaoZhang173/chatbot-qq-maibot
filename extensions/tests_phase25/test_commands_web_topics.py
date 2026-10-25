@@ -39,7 +39,7 @@ class GrammarTests(unittest.TestCase):
         self.assertEqual(parse('发动态：收藏这个灵感，之后再研究')['kinds'],['dynamic'])
     def test_ambiguity_and_sensitive_or_blocked_content_fail(self):
         for text in ('关注李四','点赞 '+BV+' BV1wYtd6KERy','如果好玩就点赞 '+BV,
-                     '发动态：政治立场','发动态：QQ号937673289','取消收藏 '+BV,
+                     '发动态：政治立场','发动态：QQ号000000000','取消收藏 '+BV,
                      '在 '+BV+' 下留言：政治观点','投币2枚 '+BV,'关注 UID 0'):
             with self.subTest(text=text),self.assertRaises(ValueError):validate(parse(text))
     def test_topic_policy_does_not_blanket_block_game_and_tech(self):
@@ -65,7 +65,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):self.s.state.close();self.tmp.cleanup()
     def message(self,text=PREFIX+'关注 UID 242616',actor='owner',session='a',mid='m1',**kw):
         return {'platform':'qq','account_id':'bot','session_id':session,'scope':'group','timestamp':time.time(),
-            'message_id':mid,'message_info':{'user_info':{'user_id':actor,'user_nickname':'937673289'},'group_info':{'group_id':'g'+session}},
+            'message_id':mid,'message_info':{'user_info':{'user_id':actor,'user_nickname':'synthetic-user'},'group_info':{'group_id':'g'+session}},
             'raw_message':[{'type':'text','data':text}],**kw}
     async def test_only_platform_bound_owner_and_exact_prefix_force(self):
         for m in (self.message(actor='imposter'),self.message(text='请 '+PREFIX+'关注 UID 242616'),
@@ -112,7 +112,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((await self.q.review(key,'游戏作者'))['allowed'])
         self.assertFalse(self.q.get(key)['forced'])
     async def test_web_topic_private_input_limits_and_failure(self):
-        for query in ('政治动态','QQ号937673289'):
+        for query in ('政治动态','QQ号000000000'):
             with patch.object(web_access,'search',side_effect=AssertionError('no fetch')):
                 self.assertFalse((await web_access.run(self.s,'search',query,'a'))['success'])
         self.s.screen_content=AsyncMock(return_value={'allowed':True})

@@ -1,10 +1,10 @@
 {
-  "snapshot_date": "2026-10-23",
+  "snapshot_date": "2026-10-25",
   "maibot": "1.3.14",
   "qq_adapter": "0.4.2",
   "qq_config_version": "0.4.1",
   "tomlkit": "0.15.2",
   "python": "3.12",
   "adapter_commit": "7a0c321bfc65e157abdb5e8a10913181387b6081",
-  "codec_sha256": "d6c8e0c2dbabfbbaf826822771cd40c7b6576148c9ac7c8acb009b56a3437eaa"
+  "source_manifest": "docs/source-manifest-20261025.json"
 }

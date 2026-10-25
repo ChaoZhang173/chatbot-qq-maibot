@@ -135,6 +135,8 @@ def browse(engine,config,autonomous=False):
             continue
         if not enabled(engine.config(),engine.now()):break
         result={'target':target.key,'status':'read','comment_allowed':allowed,'comment_skip_reason':reason}
+        if model.last_decision:
+            result['interest_decision']={k:model.last_decision.get(k) for k in ('interested','interest_score','engagement','engagement_reasons','reason')}
         if allowed and text is not None:
             try:result['comment']=engine.sender.deliver('proactive',target,key,lambda:text)
             except Denied as exc:result['comment']={'status':'skipped','reason':str(exc)}

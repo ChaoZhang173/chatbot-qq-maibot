@@ -12,7 +12,7 @@ DEFAULT_POLICY = {"mode": "off", "max_per_action": 1, "manual_uids": [], "cache_
 
 def policy(config):
     value = {**DEFAULT_POLICY, **config.get("mentions", {})}
-    if (value["mode"] not in ("off", "manual", "mutual_and_manual")
+    if (value["mode"] not in ("off", "manual", "mutual_and_manual", "public_context")
             or type(value["max_per_action"]) is not int or value["max_per_action"] != 1):
         raise ValueError("invalid_mention_policy")
     if type(value["cache_seconds"]) is not int or not 60 <= value["cache_seconds"] <= 3600:
@@ -30,7 +30,7 @@ def contact(uid, name, source):
     if (not re.fullmatch(r"[1-9]\d{0,19}", uid) or not 1 <= len(name) <= 40
             or re.search(r"[@＠\s\x00-\x1f\x7f]|https?://|www\.", name, re.IGNORECASE)
             or name.casefold() in {"all", "everyone", "here", "全体成员", "所有人"}
-            or source not in ("mutual", "manual")):
+            or source not in ("mutual", "manual", "public_context")):
         raise Denied("invalid_mention_contact")
     return {"uid": uid, "name": name, "source": source}
 
@@ -52,12 +52,30 @@ def registry(store, config, api, now, *, force=False):
             if str(user["uid"]) != uid:
                 raise Denied("mention_profile_mismatch")
             found[uid] = contact(uid, user["name"], "manual")
-        if settings["mode"] == "mutual_and_manual":
+        if settings["mode"] in ("mutual_and_manual", "public_context"):
             for user in api.mutuals(str(config["bot_uid"]))[:20]:
                 uid = str(user["uid"])
                 if uid != str(config["bot_uid"]) and uid not in found:
                     found[uid] = contact(uid, user["name"], "mutual")
-        contacts = list(found.values())[:20]
+        if settings["mode"] == "public_context":
+            # Only verified platform actor/author IDs from our own public event ledger.
+            seen=set();uids=[]
+            for row in store.db.execute('SELECT payload FROM unified_events WHERE created>=? ORDER BY created DESC LIMIT 60',(now-7*86400,)):
+                event=json.loads(row[0])
+                if (event.get('platform')!='bilibili' or str(event.get('bot_account_id'))!=str(config['bot_uid'])
+                        or event.get('sharing_scope')!='public' or event.get('is_private')
+                        or event.get('origin') not in ('external_user','platform_content')):continue
+                uid=str(event.get('actor_id') or '')
+                if not re.fullmatch(r'[1-9]\d{0,19}',uid) or uid==str(config['bot_uid']) or uid in seen:continue
+                seen.add(uid)
+                if uid not in found:uids.append(uid)
+                if len(uids)>=5:break
+            for uid in uids:
+                try:
+                    user=api.profile(uid)
+                    if str(user['uid'])==uid:found[uid]=contact(uid,user['name'],'public_context')
+                except Exception:continue
+        contacts = sorted(found.values(),key=lambda row:{"manual":0,"public_context":1,"mutual":2}[row["source"]])[:20]
         store.put("mention_registry", {"policy": fingerprint, "checked_at": now,
                   "expires_at": now + settings["cache_seconds"], "contacts": contacts, "status": "ready"})
         return contacts
@@ -69,28 +87,30 @@ def registry(store, config, api, now, *, force=False):
 
 class MentionText(str):
     """Exact display text plus one explicit UID; raw body never contains @."""
-    def __new__(cls, body, selected):
+    def __new__(cls, body, selected, limit=250):
         from .core import safe_text
 
-        body = safe_text(body)
+        if limit not in (250,850):raise Denied("invalid_text_limit")
+        body = safe_text(body,limit=800 if limit==850 else 250)
         if not isinstance(selected, list) or len(selected) != 1:
             raise Denied("mention_count_exceeds_limit")
         chosen = contact(**selected[0])
         rendered = "@" + chosen["name"] + " " + body
-        if len(rendered) > 250:
+        if len(rendered) > limit:
             raise Denied("invalid_generated_text")
         value = super().__new__(cls, rendered)
-        value.body, value.mentions = body, [chosen]
+        value.body, value.mentions, value.limit = body, [chosen], limit
         return value
 
     def checked(self):
-        rebuilt = MentionText(self.body, self.mentions)
+        rebuilt = MentionText(self.body, self.mentions, self.limit)
         if str(rebuilt) != str(self):
             raise Denied("invalid_structured_mention")
         return self
 
 
-def select(body, uids, candidates, kind):
+def select(body, uids, candidates, kind, *, limit=250):
+    if limit not in (250,850) or (limit==850 and kind!="dynamic"):raise Denied("invalid_text_limit")
     if not isinstance(uids, list) or len(uids) > 1 or any(not isinstance(uid, str) for uid in uids):
         raise Denied("invalid_mention_intent")
     if not uids:
@@ -100,7 +120,7 @@ def select(body, uids, candidates, kind):
     known = {item["uid"]: item for item in candidates}
     if uids[0] not in known:
         raise Denied("unapproved_mention_uid")
-    return MentionText(body, [known[uids[0]]])
+    return MentionText(body, [known[uids[0]]],limit)
 
 
 def verify_before_send(text, config, store, api, now, kind):

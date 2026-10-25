@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from . import quota
 
 TZ = ZoneInfo("Asia/Shanghai")
 DEFAULTS = {
@@ -45,7 +46,7 @@ def machine_id():
 
 def load_config(path, now=None):
     c = json.loads(Path(path).read_text())
-    if '_activity_boost_active' in c:raise ValueError('reserved_computed_configuration_field')
+    if any(k in c for k in ('_activity_boost_active','_quota_window','autonomy_period_limit','account_period_limit')):raise ValueError('reserved_computed_configuration_field')
     for k, v in DEFAULTS.items():
         c.setdefault(k, v)
     if c["base_url"].rstrip("/") not in (
@@ -75,8 +76,18 @@ def load_config(path, now=None):
         or c["browse_max"] > 5400
     ):
         raise ValueError("policy_exceeds_authorization")
-    if c["active_start"] < 9 or c["active_end"] > 23:
+    if type(c.get("night_activity_enabled", False)) is not bool:
+        raise ValueError("invalid_night_activity_switch")
+    start, end = c["active_start"], c["active_end"]
+    if type(start) is not int or type(end) is not int or not 0 <= start < end <= 24:
+        raise ValueError("invalid_active_hours")
+    quota.validate_reset(c)
+    if quota.enabled(c):
+        if (start, end) != (0, 24):raise ValueError("night_activity_requires_all_day")
+    elif start < 9 or end > 23:
         raise ValueError("hours_exceed_authorization")
+    from .diary import policy as diary_policy
+    diary_policy(c)
     from .mentions import policy as mention_policy
     mention_policy(c)
     from .boost import policy as boost_policy
@@ -86,7 +97,8 @@ def load_config(path, now=None):
     from .live import policy as live_policy
     live_policy(c)
     from .boost import effective
-    return effective(c,time.time() if now is None else now)
+    at = time.time() if now is None else now
+    return quota.effective(effective(c, at), at)
 
 
 def day(ts):
@@ -100,7 +112,7 @@ def active(c, ts):
 def future(c, ts, kind, rng=random):
     now = datetime.fromtimestamp(ts, TZ)
     start = now.replace(hour=c["active_start"], minute=0, second=0, microsecond=0)
-    end = now.replace(hour=c["active_end"], minute=0, second=0, microsecond=0)
+    end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=c["active_end"])
     if now >= end:
         start += timedelta(days=1)
         end += timedelta(days=1)
@@ -276,7 +288,9 @@ class Store:
     def stop_thread(self, thread):
         self.db.execute("insert or ignore into stopped values(?)", (thread,))
 
-    def used(self, uid, kind, ts):
+    def used(self, uid, kind, ts, c=None):
+        if c is not None:
+            return quota.count(self.db, c, ts, where="uid=? AND kind=?", args=(uid, kind))
         return self.db.execute(
             "select count(*) from actions where uid=? and kind=? and day=?",
             (uid, kind, day(ts)),
@@ -305,7 +319,9 @@ class Store:
             and self.db.execute("select 1 from actions where id=?", (key,)).fetchone()
         ):
             raise Denied("already_attempted")
-        if self.used(uid, kind, ts) >= c["limits"][kind]:
+        from .diary import reserved,action_key
+        keep=reserved(self,c,ts,"dynamic") if kind=="dynamic" and key!=action_key(c,ts) else 0
+        if self.used(uid, kind, ts, c) >= c["limits"][kind]-keep:
             raise Denied("daily_limit")
         if (
             thread
@@ -316,10 +332,7 @@ class Store:
             raise Denied("thread_stopped")
         if (
             kind == "reply"
-            and self.db.execute(
-                "select count(*) from actions where uid=? and kind='reply' and thread=? and day=?",
-                (uid, thread, day(ts)),
-            ).fetchone()[0]
+            and quota.daily_count(self.db,c,ts,"uid=? AND kind='reply' AND thread=?",(uid,thread))
             >= c["thread_daily"]
         ):
             raise Denied("thread_limit")
@@ -338,10 +351,7 @@ class Store:
             if last and ts - last < c["proactive_gap"]:
                 raise Denied("minimum_gap")
             if (
-                self.db.execute(
-                    "select count(*) from actions where uid=? and kind='proactive' and author=? and day=?",
-                    (uid, target.author, day(ts)),
-                ).fetchone()[0]
+                quota.daily_count(self.db,c,ts,"uid=? AND kind='proactive' AND author=?",(uid,target.author))
                 >= c["author_daily"]
             ):
                 raise Denied("author_limit")
@@ -472,7 +482,9 @@ class Sender:
         reserved_at = self.now()
         self.s.reserve(c, kind, target, reserved_at, key, thread, recipient)
         try:
-            text = safe_text(generate())
+            from .diary import action_key,policy as diary_policy
+            diary_limit=(kind=='dynamic' and key==action_key(c,reserved_at) and diary_policy(c)['enabled'])
+            text = safe_text(generate(),limit=850 if diary_limit else 250)
             from .mentions import verify_before_send
             text = verify_before_send(text, c, self.s, self.api, self.now(), kind)
         except InterestSkip:
@@ -500,7 +512,7 @@ class Sender:
         if kind in ("dynamic", "proactive") and not active(c2, self.now()):
             self.s.update(key, status="failed", error="outside_active_hours")
             return {"status": "skipped"}
-        if day(self.now()) != day(reserved_at):
+        if day(self.now()) != day(reserved_at) or quota.window(c, self.now()) != quota.window(c, reserved_at):
             self.s.update(key, status="failed", error="date_changed_during_generation")
             return {"status": "skipped"}
         self.identity(c2)

@@ -207,6 +207,17 @@ async def unified_memory(plugin_id: str, capability: str, args: dict) -> dict:
     # Import only inside Host RPC, using its existing singleton.
     from src.services.memory_service import memory_service
 
+    if operation == "gallery_embedding":
+        _args(args, ["text"])
+        from src.services.embedding_service import EmbeddingServiceClient
+        text = _text(args.get("text"), "text", 600, required=True)
+        result = await EmbeddingServiceClient(request_type="gallery.description").embed_text(text)
+        vector = result.embedding
+        if not vector or len(vector) > 4096:
+            raise ValueError("invalid_gallery_embedding")
+        space = hashlib.sha256(json.dumps([result.api_provider, result.model_identifier, len(vector)]).encode()).hexdigest()
+        return {"success": True, "vector": vector, "space": space}
+
     if operation == "status":
         _args(args, [])
         return await memory_service.memory_stats()

@@ -5,6 +5,7 @@ import argparse, json, os, re, time
 from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
+from . import quota
 from .core import (
     Store,
     Sender,
@@ -52,7 +53,9 @@ class Engine:
 
     def bounded_core(self,payload):
         c=self.config();now=self.now()
-        if self.s.db.execute('SELECT count(*) FROM usage WHERE day=?',(day(now),)).fetchone()[0]>=c['model_daily']:
+        from .diary import reserved
+        keep=0 if payload.get('op') in ('diary_episodes','diary_draft','diary_review') else reserved(self.s,c,now,'model')
+        if quota.count(self.s.db,c,now,'usage')>=c['model_daily']-keep:
             raise Denied('model_daily_limit')
         cur=self.s.db.execute('INSERT INTO usage(created,day,status,model) VALUES(?,?,?,?)',
             (now,day(now),'pending','maibot-unified'))
@@ -392,7 +395,15 @@ class Engine:
         self.sender.identity(c)
         if not self.s.get("baseline_at"):
             raise Denied("baseline_required")
-        results = {"reply": self.replies()}
+        results = {}
+        from . import diary
+        try:diary_result=diary.tick(self)
+        except Denied as exc:diary_result={'status':'skipped','reason':str(exc)}
+        if diary_result['status'] not in ('disabled','waiting','already_attempted','retry_wait'):
+            results['diary']=diary_result
+            if diary_result['status'] in ('success','unknown','paused'):
+                self.s.put('last_tick',{'at':now,'result':results});return results
+        results['reply'] = self.replies()
         if c.get('autonomy_enabled'):
             from .autonomy import Autonomy
             if not hasattr(self,'_autonomy'):self._autonomy=Autonomy(self)

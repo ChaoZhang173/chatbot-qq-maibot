@@ -13,6 +13,7 @@ import socket
 import time
 
 from .api import public_image
+from . import quota
 from .core import Denied, InterestSkip, day, safe_text
 
 SOCKET_PATH = "/srv/maibot/unified/core.sock"
@@ -103,7 +104,8 @@ class UnifiedModel:
         if event.get("platform") != "bilibili" or str(event.get("bot_account_id")) != str(c["bot_uid"]):
             raise Denied("unified_account_mismatch")
         now = time.time()
-        if self.s.db.execute("select count(*) from usage where day=?", (day(now),)).fetchone()[0] >= c["model_daily"]:
+        from .diary import reserved
+        if quota.count(self.s.db,c,now,'usage') >= c["model_daily"]-reserved(self.s,c,now,'model'):
             raise Denied("model_daily_limit")
         if self.s.get("model_cooldown", 0) > now:
             raise Denied("model_cooldown")
@@ -127,7 +129,7 @@ class UnifiedModel:
                 "enabled": bool(c["enabled"].get(kind)),
                 "paused": bool(c["paused"] or (self.s.root / "PAUSE").exists() or self.s.get("pause_reason")),
                 "daily_limit": c["limits"].get(kind, 0),
-                "used_today": self.s.used(c["bot_uid"], kind, now),
+                "used_today": self.s.used(c["bot_uid"], kind, now, c),
                 "reply_interest_min_score": c["reply_interest_min_score"],
                 "max_model_tokens": c["max_model_tokens"],
                 "active_hours": [c["active_start"], c["active_end"]],
@@ -148,7 +150,7 @@ class UnifiedModel:
                                 and (event.get("target") or {}).get("kind") == "video")
                 settings = policy(c)
                 permissions["engagement"] = {**settings, "enabled": settings["enabled"] and actual_video,
-                    "used_today": used(self.s, str(c["bot_uid"]), now), "actual_read_video": actual_video}
+                    "used_today": used(self.s, str(c["bot_uid"]), now, c), "actual_read_video": actual_video}
             result = self.transport(
                 {"op": "decide", "event": event, "task": kind, "material": material,
                  "images": inline_images, "history": list(history)[-10:], "permissions": permissions}

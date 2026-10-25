@@ -58,6 +58,26 @@ class ConfigSafetyTests(unittest.TestCase):
         self.assertEqual(len(p['adapters'][0]['group']['allow_ids']), 2)
         self.assertNotIn('*', p['adapters'][0]['group']['allow_ids'])
 
+    def test_json_credentials_and_public_keys_are_rejected(self):
+        check = load('check_public_files')
+        import json
+        p = Path('config/example.json')
+        for field in ('api_key', 'password', 'public_key', 'sessdata', 'bili_jct'):
+            findings = check.scan_file(p, p, json.dumps({field: 'synthetic-test-value'}))
+            self.assertIn('nonempty-credential-field', findings)
+            self.assertNotIn('synthetic-test-value', str(findings))
+        key = 'ssh-' + 'ed25519 ' + 'A' * 60
+        self.assertIn('public-key-or-certificate', check.scan_file(Path('a.txt'), Path('a.txt'), key))
+        self.assertIn('private-or-binary-artifact', check.scan_file(Path('a.pub'), Path('a.pub'), ''))
+
+    def test_current_bilibili_example_is_valid_and_paused(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'extensions'))
+        from phase2.core import load_config
+        config = load_config(ROOT / 'config/bilibili.current.example.json')
+        self.assertTrue(config['paused'])
+        self.assertEqual(config['bot_uid'], '')
+
 
 if __name__ == '__main__':
     unittest.main()

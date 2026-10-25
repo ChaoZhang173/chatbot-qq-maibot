@@ -76,16 +76,6 @@
     "current_state": "元气充足，觉得今天又能发现好玩的东西",
     "current_wishes": []
   },
-  "bili_activity_boost": {
-    "starts_at": 1792825855.0878634,
-    "ends_at": 1793430655.0878634,
-    "engagement_limits": {
-      "like": 20,
-      "favorite": 10,
-      "follow": 20,
-      "coin": 4
-    }
-  },
   "qq_bili_commands_enabled": true,
   "qq_owner_number": "REPLACE_PRIVATELY",
   "qq_owner_bindings": {},
@@ -95,5 +85,9 @@
   "bili_live_enabled": true,
   "qq_private_familiar_enabled": true,
   "autonomy_enabled": true,
-  "qq_command_model_planning_enabled": true
+  "qq_command_model_planning_enabled": true,
+  "paid_tasks_bridge_enabled": true,
+  "daily_diary": {
+    "enabled": true
+  }
 }

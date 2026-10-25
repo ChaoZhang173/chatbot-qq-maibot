@@ -11,6 +11,7 @@ import json
 import math
 import time
 
+from . import quota
 from .core import Denied, PlatformError, active, day, machine_id
 
 
@@ -57,10 +58,10 @@ def choices(decision):
     return selected
 
 
-def used(store, uid, now):
+def used(store, uid, now, c=None):
     # Every reserved attempt counts, including unknown and failures. A restart,
     # a policy change or public visibility cannot refund a possibly spent coin.
-    return {kind: store.used(str(uid), kind, now) for kind in CAPS}
+    return {kind: store.used(str(uid), kind, now, c) for kind in CAPS}
 
 
 class EngagementExecutor:
@@ -264,7 +265,7 @@ class EngagementExecutor:
                 continue
             try:
                 limits = self._permit(config, kind)["limits"]
-                if self.s.used(uid, kind, self.now()) >= limits[kind]:
+                if self.s.used(uid, kind, self.now(), config) >= limits[kind]:
                     raise Denied("engagement_daily_limit")
                 self.identity_guard(config)
                 before = self._observe(kind, aid, author, uid)
@@ -277,7 +278,7 @@ class EngagementExecutor:
                         raise Denied("insufficient_or_unverified_coin_balance")
                 self.s.db.execute("BEGIN IMMEDIATE")
                 try:
-                    if self.s.used(uid, kind, self.now()) >= limits[kind]:
+                    if self.s.used(uid, kind, self.now(), config) >= limits[kind]:
                         raise Denied("engagement_daily_limit")
                     reserved = self.now()
                     self.s.db.execute("INSERT INTO actions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",

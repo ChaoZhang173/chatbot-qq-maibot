@@ -1,0 +1,15 @@
+{
+  "snapshot_date": "2026-10-25",
+  "offline_tests": {
+    "run": 253,
+    "passed": 253,
+    "skipped": 0,
+    "upstream_host_fixture_provided": true
+  },
+  "host_patch_applied_to_clean_upstream": true,
+  "host_patch_result_matches_deployment": true,
+  "source_files_checked_against_live": 54,
+  "public_diary_send_tested_in_this_publish": false,
+  "includes_runtime_data": false,
+  "scan_scope": "complete prepared snapshot; known production values compared on server without exporting them"
+}

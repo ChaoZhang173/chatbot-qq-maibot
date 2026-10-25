@@ -2,6 +2,7 @@
 import hashlib,json
 from .account_schema import validate_settings,SPACE_FIELDS,MESSAGE_FIELDS
 from .api import platform_message
+from . import quota
 from .core import Denied,PlatformError,UnknownDelivery,active,day,machine_id
 
 class AccountSettings:
@@ -45,7 +46,7 @@ class AccountSettings:
         if row:return {'kind':'account','status':'unknown' if row['status']=='executing' else row['status'],'reason':row['reason'],'section':section}
         for prior in self.db.execute("SELECT patch,status FROM account_changes WHERE section=? AND status IN ('unknown','executing')",(section,)):
             if json.loads(prior['patch'])==patch:return {'kind':'account','status':'unknown','reason':'prior_setting_result_unknown','section':section}
-        if self.db.execute('SELECT count(*) FROM account_changes WHERE day=?',(day(now),)).fetchone()[0]>=3:raise Denied('account_settings_daily_limit')
+        if quota.count(self.db,c,now,'account_changes')>=c.get('account_period_limit',3):raise Denied('account_settings_daily_limit')
         # Prevent oscillation and no-receipt retry loops, including after restart.
         recent=self.db.execute('SELECT max(created) FROM account_changes').fetchone()[0]
         if recent and now-recent<3600:raise Denied('account_settings_minimum_gap')
@@ -53,7 +54,7 @@ class AccountSettings:
         if any(k not in before for k in patch):raise Denied('setting_not_available')
         if section=='space' and 'index_order' in patch and set(patch['index_order'])!=set(before['index_order']):raise Denied('space_sections_must_be_preserved')
         if all(before[k]==v for k,v in patch.items()):return {'kind':'account','status':'skipped','reason':'already_present','section':section}
-        if e.config()!=c:raise Denied('policy_changed')
+        if e.config()!=c or quota.window(c,e.now())!=quota.window(c,now):raise Denied('policy_changed')
         self.db.execute('INSERT INTO account_changes VALUES(?,?,?,?,?,?,?,?)',(key,day(now),now,section,json.dumps(patch,ensure_ascii=False),json.dumps(before,ensure_ascii=False),'executing',''))
         status='unknown';reason='write_no_receipt';details={};stage='write'
         try:

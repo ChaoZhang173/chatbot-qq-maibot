@@ -116,6 +116,10 @@ class MediaStore:
         row,raw=self.get(ident,session)
         reviewed=await self.review(ident,session)
         if not reviewed['allowed']:raise ValueError('图片未通过内容与隐私审查')
+        return await self.send_validated(ident,session,raw)
+
+    async def send_validated(self,ident,session,raw):
+        if session not in self.s.policy.get('qq_group_sessions',{}).values():raise ValueError('群未授权')
         date=__import__('datetime').datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Shanghai')).date().isoformat()
         used_key='qq_image_usage:'+date;used=self.s.state.get(used_key,0)
         if used>=20:raise ValueError('今日QQ发图已达20次')

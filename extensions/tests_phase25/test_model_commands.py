@@ -47,7 +47,7 @@ class GroundingTests(unittest.TestCase):
             with self.assertRaises(ValueError):checked_plan(ready(s),envelope('看看'+BV),{})
 
     def test_public_privacy_topics_and_coin_amount_keep_hard_checks(self):
-        for value in ('主人QQ号937673289','政治观点'):
+        for value in ('主人QQ号000000000','政治观点'):
             with self.assertRaises(ValueError):account_spec('profile',{'sign':value})
         with self.assertRaises(ValueError):checked_plan(ready(action('coin')),envelope('投2枚币 '+BV),{})
         self.assertEqual(checked_plan(ready(action('coin')),envelope('投一枚币 '+BV),{})['kinds'],['coin'])

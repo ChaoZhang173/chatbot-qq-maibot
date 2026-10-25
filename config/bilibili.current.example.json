@@ -11,6 +11,67 @@
     "reply": 20,
     "dm": 20
   },
-  "paused": false,
-  "model_daily": 80
+  "author_daily": 2,
+  "thread_daily": 3,
+  "active_start": 0,
+  "active_end": 24,
+  "proactive_gap": 1800,
+  "browse_min": 2700,
+  "browse_max": 5400,
+  "poll_seconds": 60,
+  "max_candidates": 3,
+  "model_daily": 80,
+  "max_model_tokens": 500,
+  "reply_interest_min_score": 65,
+  "mentions": {
+    "mode": "public_context",
+    "max_per_action": 1,
+    "cache_seconds": 300,
+    "manual_uids": []
+  },
+  "engagement": {
+    "enabled": true,
+    "limits": {
+      "like": 10,
+      "favorite": 5,
+      "follow": 20,
+      "coin": 2
+    }
+  },
+  "qq_commands_enabled": true,
+  "content_policy_enabled": true,
+  "live_chat": {
+    "enabled": true,
+    "daily_limit": 100,
+    "stay_min": 600,
+    "stay_max": 3600,
+    "ordinary_probability": 0.85,
+    "message_gap": 60,
+    "poll_seconds": 15,
+    "visits_daily": 4,
+    "interval_min": 3600,
+    "interval_max": 10800,
+    "room_daily_limit": 40
+  },
+  "autonomy_enabled": true,
+  "account_settings_enabled": true,
+  "night_activity_enabled": true,
+  "daily_diary": {
+    "enabled": true,
+    "time": "22:30",
+    "timezone": "Asia/Shanghai"
+  },
+  "paused": true,
+  "bot_uid": "",
+  "owner_uid": "",
+  "writer_machine": "",
+  "dynamic_ids": [],
+  "video_ids": [],
+  "source_uids": [],
+  "interests": [
+    "AI",
+    "游戏",
+    "动漫",
+    "美食"
+  ]
 }

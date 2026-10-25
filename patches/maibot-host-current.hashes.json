@@ -1,0 +1,10 @@
+{
+  "src/maisaka/chat_loop_service.py": {
+    "upstream_sha256": "bdc1f8955f4b629931a0285eca1bc10cd1cf1a773821452fe583ec172ca0f2d7",
+    "deployed_sha256": "fcd0dee6d51eb74d08b90d72c4ce84e739d99335bfbfef21154be51ef431dbc9"
+  },
+  "src/plugin_runtime/capabilities/registry.py": {
+    "upstream_sha256": "c3c4d708997fe01028b5f262e14bc0065b161b8781d6464116ea075b510f081e",
+    "deployed_sha256": "fc14636251bdb1e3b79a714c68c1be9440f17b7cb79261b74fc066b7ab94bdab"
+  }
+}

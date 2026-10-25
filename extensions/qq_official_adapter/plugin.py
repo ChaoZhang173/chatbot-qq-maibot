@@ -78,6 +78,8 @@ class QQOfficialAdapterPlugin(MaiBotPlugin):
         self._id_map: Dict[str, Any] = {"group": {}, "user": {}}
         self._unified_account_id = ""
         self._assign_admin_ids: List[str] = []
+        self._paid_owner_server = None
+        self._paid_owner_start = None
 
     async def on_load(self) -> None:
         await self._sync_tool_states()
@@ -126,8 +128,25 @@ class QQOfficialAdapterPlugin(MaiBotPlugin):
         self._assign_admin_ids = [str(item).strip() for item in settings.assign_admin_ids if str(item).strip()]
         self._load_id_map()
         self._worker = asyncio.create_task(self._run(), name="qq-official-adapter")
+        self._paid_owner_start = asyncio.create_task(self._start_paid_owner_gateway())
+
+    async def _start_paid_owner_gateway(self):
+        try:
+            from .paid_owner_gateway import start
+            self._paid_owner_server = await start(self)
+        except Exception:
+            self.ctx.logger.warning('paid_owner_gateway_unavailable')
 
     async def _stop(self) -> None:
+        if self._paid_owner_start:
+            self._paid_owner_start.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._paid_owner_start
+            self._paid_owner_start = None
+        if self._paid_owner_server:
+            from .paid_owner_gateway import stop
+            await stop(self._paid_owner_server)
+            self._paid_owner_server = None
         worker = self._worker
         self._worker = None
         if worker is not None:

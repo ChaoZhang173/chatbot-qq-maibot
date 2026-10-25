@@ -1,6 +1,7 @@
 """Occasional text-only live chat, inside the existing single-writer process."""
 import hashlib,json,random,re,time
 from datetime import datetime
+from . import quota
 from .core import Denied,PlatformError,UnknownDelivery,TZ,active,day,machine_id
 from .content_rules import blocked,public_text,is_plain_live_text
 
@@ -94,7 +95,7 @@ class LiveChat:
         if c['paused'] or (self.s.root/'PAUSE').exists() or self.s.get('pause_reason'):raise Denied('paused')
         if not active(c,self.e.now()):raise Denied('outside_active_hours')
         if str(c['bot_uid'])!=str(self.s.get('bound_uid')) or c['writer_machine']!=machine_id() or not self.s.get('baseline_at'):raise Denied('live_identity_required')
-        if self.s.used(str(c['bot_uid']),'live',self.e.now())>=p['daily_limit']:raise Denied('live_daily_limit')
+        if self.s.used(str(c['bot_uid']),'live',self.e.now(),c)>=p['daily_limit']:raise Denied('live_daily_limit')
 
     def close(self,reason):
         visit=self.s.get('live_visit')
@@ -104,15 +105,15 @@ class LiveChat:
 
     def start(self,c,p):
         now=self.e.now()
-        if self.s.db.execute('SELECT count(*) FROM live_visits WHERE day=?',(day(now),)).fetchone()[0]>=p['visits_daily']:return {'status':'visits_daily_limit'}
-        end=datetime.fromtimestamp(now,TZ).replace(hour=c['active_end'],minute=0,second=0,microsecond=0).timestamp()
+        if quota.count(self.s.db,c,now,'live_visits')>=p['visits_daily']:return {'status':'visits_daily_limit'}
+        end=quota.activity_end(c,now,p['stay_max'])
         if end-now<p['stay_min']:return {'status':'near_quiet_hours'}
         self.s.put('live_next_visit',now+self.rng.randint(p['interval_min'],p['interval_max']))
         # Choose a random game/virtual/knowledge/life area; the core then checks actual interest and topics.
         parent=self.rng.choice([2,3,6,9]);candidates=self.api.candidates(parent)
         candidates=[r for r in candidates if r['uid']!=str(c['bot_uid']) and not blocked(json.dumps(r,ensure_ascii=False))
             and self.s.get('live_avoid:'+r['room_id'],0)<now and
-            self.s.db.execute("SELECT count(*) FROM actions WHERE kind='live' AND target=? AND day=?",('live:'+r['room_id'],day(now))).fetchone()[0]<p['room_daily_limit']]
+            quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+r['room_id'],))<p['room_daily_limit']]
         self.rng.shuffle(candidates);candidates=candidates[:6]
         if not candidates:return {'status':'no_eligible_room'}
         answer=self.e.bounded_core({'op':'live_plan','mode':'select','material':{'rooms':candidates}})
@@ -127,7 +128,7 @@ class LiveChat:
 
     def join(self,c,p,room,stay_seconds=None):
         now=self.e.now()
-        end=datetime.fromtimestamp(now,TZ).replace(hour=c['active_end'],minute=0,second=0,microsecond=0).timestamp()
+        end=quota.activity_end(c,now,p['stay_max'])
         if end-now<p['stay_min']:raise Denied('outside_active_hours')
         duration=min(stay_seconds or self.rng.randint(p['stay_min'],p['stay_max']),int(end-now))
         key=hashlib.sha256((room['room_id']+':'+str(now)).encode()).hexdigest()
@@ -150,8 +151,8 @@ class LiveChat:
         if visit and visit['room']['room_id']==rid:return {'status':'already_present','room_id':rid,'ends':visit['ends']}
         if visit and not forced:raise Denied('live_current_visit')
         if visit and now-visit['started']<p['stay_min']:raise Denied('live_current_visit_minimum')
-        if self.s.db.execute('SELECT count(*) FROM live_visits WHERE day=?',(day(now),)).fetchone()[0]>=p['visits_daily']:raise Denied('live_visits_daily_limit')
-        if self.s.db.execute("SELECT count(*) FROM actions WHERE kind='live' AND target=? AND day=?",('live:'+rid,day(now))).fetchone()[0]>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
+        if quota.count(self.s.db,c,now,'live_visits')>=p['visits_daily']:raise Denied('live_visits_daily_limit')
+        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
         if blocked(json.dumps(room,ensure_ascii=False)) or self.e.screen_content(json.dumps(room,ensure_ascii=False)).get('allowed') is not True:raise Denied('fixed_topic_restriction')
         if self.e.config()!=c:raise Denied('live_policy_changed')
         self.guard(c,p)
@@ -187,7 +188,7 @@ class LiveChat:
         rows=[row for row in rows if not LOW_INFORMATION.search(row['text'])]
         if not rows:return {'status':'no_substantive_chat'}
         material='\n'.join(r['text'] for r in rows)
-        if self.s.db.execute("SELECT count(*) FROM actions WHERE kind='live' AND target=? AND day=?",('live:'+rid,day(now))).fetchone()[0]>=p['room_daily_limit']:return self.close('room_daily_limit')
+        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:return self.close('room_daily_limit')
         last=self.s.db.execute("SELECT max(created) FROM actions WHERE kind='live'").fetchone()[0]
         if last and now-last<p['message_gap']:return {'status':'message_gap'}
         history=[r[0] for r in self.s.db.execute("SELECT text FROM actions WHERE kind='live' AND target=? AND status='success' ORDER BY created DESC LIMIT 5",('live:'+rid,))]
@@ -221,7 +222,7 @@ class LiveChat:
         if now>=current['ends']:return self.close('visit_complete')
         if self.e.config()!=c:raise Denied('live_policy_changed')
         self.guard(c,p)
-        if self.s.db.execute("SELECT count(*) FROM actions WHERE kind='live' AND target=? AND day=?",('live:'+rid,day(now))).fetchone()[0]>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
+        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
         last=self.s.db.execute("SELECT max(created) FROM actions WHERE kind='live'").fetchone()[0]
         if last and now-last<p['message_gap']:raise Denied('live_message_gap')
         if self.s.db.execute('SELECT 1 FROM actions WHERE id=?',(key,)).fetchone():return {'status':'already_attempted'}

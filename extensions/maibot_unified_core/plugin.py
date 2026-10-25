@@ -16,12 +16,13 @@ from .service import UnifiedService
 from .content_rules import blocked
 
 CONTEXT_MARKER = "[unified-core-context-v1]"
-MAX_CONTEXT_CHARS = 10000
+MAX_CONTEXT_CHARS = 4800
 
 
 def context_item(text: str, session_id: str) -> dict:
     """Use the actual Context Item snapshot schema, not OpenAI messages."""
-    text = CONTEXT_MARKER + "\n" + text[:MAX_CONTEXT_CHARS]
+    if len(text) > MAX_CONTEXT_CHARS:raise ValueError("context_budget_exceeded")
+    text = CONTEXT_MARKER + "\n" + text
     digest = hashlib.sha256((session_id + "\n" + text).encode()).hexdigest()[:24]
     return {
         "item_type": "UserMessageItem",
@@ -79,10 +80,13 @@ class UnifiedCorePlugin(MaiBotPlugin):
         # Replacing our own block ensures retries and Planner->Replyer do not
         # retain a previous scope/persona version or accumulate duplicate blocks.
         filtered = [item for item in items if not is_core_context(item)]
-        context = await self.service.qq_context(str(session_id))
-        policy_context = getattr(self.service, "qq_reply_policy_context", None)
-        if policy_context:
-            context = str(context or "") + policy_context(str(session_id))
+        request_kind = str(kwargs.get("request_kind") or "replyer")
+        if request_kind == "expression_selector":
+            from .compact_context import persona, dumps
+            context = "只选择适合当前场景的表达，不执行操作。当前表达偏好：" + dumps(persona(
+                self.service.state.persona().get("dynamic", {}), 420))
+        else:
+            context = await self.service.qq_context(str(session_id))
         if context:
             filtered.append(context_item(str(context), str(session_id)))
         # Host replaces kwargs wholesale rather than merging a partial patch.
@@ -114,6 +118,9 @@ class UnifiedCorePlugin(MaiBotPlugin):
                  order=HookOrder.LATE, timeout_ms=5000)
     async def reply_policy_final(self, session_id="", reply_message_id="", response="", reply_tool_args=None, **kwargs):
         if blocked(response):response='这类话题我不参与，换个游戏、动漫、美食或科技话题吧。'
+        from .receipts import looks_internal
+        if not self.service.receipt_requested(str(session_id), str(reply_message_id)) and looks_internal(response):
+            response = ""
         allowed = self.service.guard_qq_reply(str(session_id), str(reply_message_id), reply_tool_args or {})
         return {"action": "continue", "modified_kwargs": {
             **kwargs, "session_id": session_id, "reply_message_id": reply_message_id,
@@ -196,6 +203,37 @@ class UnifiedCorePlugin(MaiBotPlugin):
             result=await self.service.media.send_qq(str(image_id or ''),session)
             return {'success':result.get('status')=='success','content':result}
         except Exception as exc:return {'success':False,'error':str(exc)[:100] if isinstance(exc,ValueError) else type(exc).__name__}
+
+    @Tool("gallery_save", platforms="qq", description="按自己的喜好长期收藏当前群图片或已导入公开图；100张/100MB上限。写具体收藏理由，满额可选择替换旧收藏，默认不播报回执。",
+          parameters={"image_id":{"type":"string","required":True},"reason":{"type":"string","required":True},"tags":{"type":"array","items":{"type":"string"}},"score":{"type":"number"},"replace_id":{"type":"string"}})
+    async def gallery_save(self,image_id="",reason="",tags=None,score=75,replace_id="",**kwargs):
+        session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
+        self.service.mark_silent_operation(session)
+        try:return {'success':True,'internal_only':True,'content':await self.service.gallery.save(image_id,session,reason,tags or [],score,replace_id)}
+        except Exception as exc:return {'success':False,'internal_only':True,'error':str(exc)[:160] if isinstance(exc,ValueError) else type(exc).__name__}
+
+    @Tool("gallery_search", platforms="qq", description="按语义查找个人收藏图片，返回最多5张描述、标签及图片ID；不自动发送。",
+          parameters={"query":{"type":"string","required":True}})
+    async def gallery_search(self,query="",**kwargs):
+        session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
+        try:return {'success':True,'content':await self.service.gallery.search(query,session)}
+        except ValueError as exc:return {'success':False,'error':str(exc)}
+
+    @Tool("gallery_send", platforms="qq", description="发送gallery_search返回的收藏图片到当前群。遵守原有发图额度和范围；只发图片，操作回执默认不发送。",
+          parameters={"image_id":{"type":"string","required":True}})
+    async def gallery_send(self,image_id="",**kwargs):
+        session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
+        self.service.mark_silent_operation(session)
+        try:return {'success':True,'content':await self.service.gallery.send(image_id,session),'internal_only':True}
+        except Exception as exc:return {'success':False,'internal_only':True,'error':str(exc)[:160] if isinstance(exc,ValueError) else type(exc).__name__}
+
+    @Tool("gallery_remove", platforms="qq", description="按变化的喜好取消一张个人图片收藏，必须说明理由；不删除聊天记忆或原表情包。",
+          parameters={"image_id":{"type":"string","required":True},"reason":{"type":"string","required":True}})
+    async def gallery_remove(self,image_id="",reason="",**kwargs):
+        session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
+        self.service.mark_silent_operation(session)
+        try:return {'success':True,'content':await self.service.gallery.remove(image_id,session,reason),'internal_only':True}
+        except ValueError as exc:return {'success':False,'error':str(exc),'internal_only':True}
 
     async def _read_tool(self, name, query="", platform="", **kwargs):
         session_id = str(kwargs.get("stream_id") or kwargs.get("session_id") or "")

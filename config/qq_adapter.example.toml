@@ -9,7 +9,7 @@ app_secret = ""
 api_base_url = "https://api.bot.qq.com"
 reconnect_delay_sec = 5.0
 unified_account_id = ""
-assign_admin_ids = ["__DISABLED_UNTIL_OWNER_CONFIGURES__"]
+assign_admin_ids = []
 
 [mute]
 enabled = false

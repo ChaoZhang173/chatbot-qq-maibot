@@ -1,0 +1,39 @@
+--- a/src/maisaka/chat_loop_service.py
++++ b/src/maisaka/chat_loop_service.py
+@@ -211,6 +211,7 @@
+                             "type": "integer",
+                             "description": "实际发送给模型的消息数量。",
+                         },
++                        "request_kind": {"type": "string", "description": "Host request purpose"},
+                         "selection_reason": {
+                             "type": "string",
+                             "description": "上下文选择说明。",
+@@ -255,6 +256,7 @@
+                             "type": "integer",
+                             "description": "实际发送给模型的消息数量。",
+                         },
++                        "request_kind": {"type": "string", "description": "Host request purpose"},
+                         "selection_reason": {
+                             "type": "string",
+                             "description": "上下文选择说明。",
+@@ -1239,6 +1241,7 @@
+         serialized_items = serialize_prompt_items(built_messages)
+         before_request_result = await self._get_runtime_manager().invoke_hook(
+             "maisaka.planner.before_request",
++            request_kind=request_kind,
+             items=deepcopy(serialized_items),
+             item_schema_version=CONTEXT_ITEM_SCHEMA_VERSION,
+             tool_definitions=serialize_tool_definitions(all_tools),
+--- a/src/plugin_runtime/capabilities/registry.py
++++ b/src/plugin_runtime/capabilities/registry.py
+@@ -16,6 +16,10 @@
+ def register_capability_impls(manager: "PluginRuntimeManager", supervisor: "PluginSupervisor") -> None:
+     """向指定 Supervisor 注册主程序提供的能力实现。"""
+     cap_service = supervisor.capability_service
++
++    # local.unified-core: explicit Host-owned memory access (Phase 2.5).
++    from .unified_memory import unified_memory
++    cap_service.register_capability("unified.memory", unified_memory)
+     cap_service.register_capability("webui.claim_upload", claim_upload)
+ 
+     def _register(name: str, impl: CapabilityImpl) -> None:
