@@ -1,0 +1,1257 @@
+--- /dev/null
++++ b/src/common/token_optimizations.py
+@@ -0,0 +1,148 @@
++"""Token 优化实验开关（仅标准库，便于离线测试）。
++
++默认值：
++- 全部默认关闭。建议灰度顺序：先只启用 ``person_fact_dedup``（P4），观察后再考虑其它实验。
++- ``person_fact_dedup``：只跳过“同一人物、同一会话、同一证据、同一抽取版本”的重复抽取。
++- ``reply_termination``：实验选项，见 ``src/maisaka/reply_termination.py``。
++- 配置文件损坏、读取失败、字段类型错误或数值非有限，一律回退到上述默认（关闭）。
++
++配置来源（后者覆盖前者）：内置默认值 → 环境变量 ``MAIBOT_TOKEN_OPT_CONFIG`` 指向的 JSON 文件
++（每 5 秒最多重读一次，删除文件即回退默认）→ 单项环境变量
++``MAIBOT_TOKEN_OPT_PERSON_FACT_DEDUP`` / ``MAIBOT_TOKEN_OPT_REPLY_TERMINATION``（1/0）。
++读取失败一律回退到内置默认值，不抛出异常。
++"""
++
++from __future__ import annotations
++
++from copy import deepcopy
++from typing import Any, Dict
++
++import hashlib
++import json
++import math
++import os
++import threading
++import time
++
++ENV_CONFIG_PATH = "MAIBOT_TOKEN_OPT_CONFIG"
++ENV_PERSON_FACT_DEDUP = "MAIBOT_TOKEN_OPT_PERSON_FACT_DEDUP"
++ENV_REPLY_TERMINATION = "MAIBOT_TOKEN_OPT_REPLY_TERMINATION"
++_FILE_REFRESH_SECONDS = 5.0
++
++DEFAULTS: Dict[str, Dict[str, Any]] = {
++    "person_fact_dedup": {
++        "enabled": False,
++        "ttl_seconds": 900.0,
++        "empty_ttl_seconds": 300.0,
++        "partial_ttl_seconds": 120.0,
++        "max_entries": 512,
++    },
++    "reply_termination": {
++        # 只有 enabled=true 才会改变任何行为。
++        "enabled": False,
++        # 目前只有 explicit：planner 必须在 reply 参数里显式给出 final_reply=true。
++        # 未知模式一律视为不终结（继续原流程）。
++        "mode": "explicit",
++    },
++}
++
++_lock = threading.Lock()
++_file_cache: Dict[str, Any] = {"path": None, "loaded_at": -1e9, "data": {}, "ok": True}
++
++
++def _parse_bool(raw: str) -> bool | None:
++    value = str(raw).strip().lower()
++    if value in {"1", "true", "yes", "on"}:
++        return True
++    if value in {"0", "false", "no", "off"}:
++        return False
++    return None
++
++
++def _read_file_config() -> tuple[Dict[str, Any], bool]:
++    """返回 (配置, 是否可信)。指定了配置文件却读不到/不是 JSON 对象时不可信（整体关闭）。"""
++
++    path = os.environ.get(ENV_CONFIG_PATH, "").strip()
++    now = time.monotonic()
++    with _lock:
++        if (
++            _file_cache["path"] == path
++            and now - float(_file_cache["loaded_at"]) < _FILE_REFRESH_SECONDS
++        ):
++            return _file_cache["data"], _file_cache["ok"]
++        data: Dict[str, Any] = {}
++        ok = True
++        if path:
++            try:
++                with open(path, "r", encoding="utf-8") as handle:
++                    loaded = json.load(handle)
++                if isinstance(loaded, dict):
++                    data = loaded
++                else:
++                    ok = False
++            except (OSError, ValueError):
++                ok = False
++        _file_cache.update(path=path, loaded_at=now, data=data, ok=ok)
++        return data, ok
++
++
++def reset_cache_for_tests() -> None:
++    with _lock:
++        _file_cache.update(path=None, loaded_at=-1e9, data={}, ok=True)
++
++
++def get_settings(section: str) -> Dict[str, Any]:
++    """返回某个实验的当前设置（fail-closed）。
++
++    配置文件不可信、该 section 不是对象、其中任何已知字段非法（类型错误、非有限数、非正数、
++    整数字段给了非整数），或单项环境变量无法解析时，整个 section 回到默认的关闭状态。
++    单项环境变量只能覆盖有效配置的 enabled，不能绕过上述关闭规则。
++    """
++
++    closed = deepcopy(DEFAULTS[section])
++    base = deepcopy(closed)
++    data, ok = _read_file_config()
++    if not ok:
++        return closed
++    if section in data:
++        override = data[section]
++        if not isinstance(override, dict):
++            return closed
++        for key, default in DEFAULTS[section].items():
++            if key not in override:
++                continue
++            value = override[key]
++            if isinstance(default, bool):
++                if not isinstance(value, bool):
++                    return closed
++                base[key] = value
++            elif isinstance(default, int):
++                if isinstance(value, bool) or not isinstance(value, (int, float)):
++                    return closed
++                if not math.isfinite(value) or value != int(value) or int(value) <= 0:
++                    return closed
++                base[key] = int(value)
++            elif isinstance(default, float):
++                if isinstance(value, bool) or not isinstance(value, (int, float)):
++                    return closed
++                if not math.isfinite(value) or value <= 0:
++                    return closed
++                base[key] = float(value)
++            elif isinstance(default, str):
++                if not isinstance(value, str) or not value:
++                    return closed
++                base[key] = value
++    env_name = {"person_fact_dedup": ENV_PERSON_FACT_DEDUP, "reply_termination": ENV_REPLY_TERMINATION}.get(section)
++    if env_name and env_name in os.environ:
++        parsed = _parse_bool(os.environ[env_name])
++        if parsed is None:
++            return closed
++        base["enabled"] = parsed
++    return base
++
++
++def fingerprint(*parts: Any, length: int = 12) -> str:
++    """稳定、不可逆的短指纹；用于日志归因，不记录原始聊天或密钥。"""
++
++    payload = json.dumps(parts, ensure_ascii=False, sort_keys=True, default=str)
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
+--- a/src/maisaka/mode_policy.py
++++ b/src/maisaka/mode_policy.py
+@@ -1,10 +1,14 @@
+ """Maisaka Planner-only 模式策略。"""
++
++# 与 src/maisaka/reply_termination.py 中的 REPLY_LOCAL_STOP_REASON 保持一致（此处不导入以避免循环依赖）。
++REPLY_LOCAL_STOP_CYCLE_REASON = "reply_completed_local_stop"
+ 
+ IDLE_CYCLE_REASONS = {
+     "planner_no_tool_end",
+     "planner_wait_rest",
+     "tool_pause:wait",
+     "tool_stop_after_execution",
++    REPLY_LOCAL_STOP_CYCLE_REASON,
+ }
+ 
+ 
+--- a/src/maisaka/reasoning_engine.py
++++ b/src/maisaka/reasoning_engine.py
+@@ -20,7 +20,9 @@
+     MessageSequence,
+     TextComponent,
+ )
++from src.chat.utils.utils import is_bot_self
+ from src.common.logger import get_logger
++from src.common.token_optimizations import get_settings as get_token_opt_settings
+ from src.config.config import global_config
+ from src.core.tooling import (
+     ToolAvailabilityContext,
+@@ -52,6 +54,16 @@
+     is_builtin_tool_in_action_stage,
+ )
+ from .chat_loop_service import ChatResponse
++from .reply_termination import (
++    REPLY_LOCAL_STOP_REASON,
++    RuntimeFacts,
++    ToolOutcome,
++    TurnFacts,
++    add_final_reply_parameter,
++    decide as decide_reply_termination,
++    extract_final_reply_signal,
++    strip_final_reply_argument,
++)
+ from .tool_result_condenser import condense_tool_result, should_condense_tool_result
+ from src.maisaka.visual.chat_history_refresher import (
+     has_pending_image_recognition,
+@@ -158,6 +170,39 @@
+         self._runtime = runtime
+         self._last_reasoning_content: str = ""
+         self._active_logical_turn_id: str | None = None
++        # 仅供“回复后本地结束”实验判定使用；run_loop 每轮刷新，默认关闭时不被读取。
++        self._turn_facts = TurnFacts()
++
++    @staticmethod
++    def _classify_batch(messages: Optional[List[SessionMessage]]) -> tuple[list[str], bool]:
++        """返回 (已确认的普通外部消息 ID, 来源是否全部已验证)。
++
++        确认为机器人自身的消息不计入；任何无法识别身份、缺少消息 ID、是命令/通知或这些标记未知的项，
++        都使“来源已验证”为 False（该次优化被禁用），绝不通过忽略它们把批次当成单条。
++        """
++
++        ids: list[str] = []
++        verified = True
++        for message in messages or []:
++            try:
++                user_info = message.message_info.user_info
++                platform = str(getattr(message, "platform", "") or "")
++                self_flag = is_bot_self(platform, str(user_info.user_id))
++                if self_flag is True:
++                    continue
++                message_id = str(getattr(message, "message_id", "") or "").strip()
++                if (
++                    self_flag is not False
++                    or not message_id
++                    or getattr(message, "is_notify", None) is not False
++                    or getattr(message, "is_command", None) is not False
++                ):
++                    verified = False
++                    continue
++                ids.append(message_id)
++            except Exception:
++                verified = False
++        return ids, verified
+ 
+     @property
+     def last_reasoning_content(self) -> str:
+@@ -251,7 +296,10 @@
+         visible_tool_specs = [*visible_builtin_tool_specs, *discovered_deferred_tool_specs]
+         self._runtime.set_current_action_tool_names([tool_spec.name for tool_spec in visible_tool_specs])
+         return (
+-            [tool_spec.to_llm_definition() for tool_spec in visible_tool_specs],
++            add_final_reply_parameter(
++                [tool_spec.to_llm_definition() for tool_spec in visible_tool_specs],
++                get_token_opt_settings("reply_termination"),
++            ),
+             self._runtime.build_deferred_tools_reminder(),
+         )
+ 
+@@ -643,6 +691,11 @@
+             return CycleEnd(
+                 "tool_stop_after_execution",
+                 "插件工具请求在当前批次执行完成后结束 Planner，并等待新消息。",
++            )
++        if pause_tool_name == REPLY_LOCAL_STOP_REASON:
++            return CycleEnd(
++                REPLY_LOCAL_STOP_REASON,
++                "实验选项：单消息单步 reply 全部发送成功且无待处理事项，本地结束本轮，等待新消息。",
+             )
+         if pause_tool_name == "stop":
+             return CycleEnd("planner_no_tool_end", "Planner 调用 stop，已结束本轮思考并等待新消息。")
+@@ -876,12 +929,31 @@
+                         logger.info(f"{self._runtime.log_prefix} {force_continue_reason}")
+                     mid_term_reference_refreshed = False
+                     round_index = 0
++                    turn_external_ids, turn_sources_verified = self._classify_batch(cached_messages)
+                     while round_index < self._runtime._max_internal_rounds:
+                         # 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐。
+                         pending_round_messages = await self._ingest_pending_messages() if round_index > 0 else []
+                         if pending_round_messages:
+                             cached_messages = pending_round_messages
+                             trigger_message = pending_round_messages[-1]
++                            later_ids, later_verified = self._classify_batch(pending_round_messages)
++                            turn_external_ids.extend(later_ids)
++                            turn_sources_verified = turn_sources_verified and later_verified
++                        self._turn_facts = TurnFacts(
++                            round_index=round_index,
++                            batch_external_message_ids=tuple(turn_external_ids),
++                            sources_verified=turn_sources_verified,
++                            proactive_triggered=turn_start_context.proactive_triggered,
++                            timeout_triggered=turn_start_context.timeout_triggered,
++                        )
++                        if round_index == 0:
++                            # P5 结构观测：只记录计数与触发类型，不记录聊天内容；不改变任何行为。
++                            logger.info(
++                                f"{self._runtime.log_prefix} turn_structure batch_messages={len(cached_messages)} "
++                                f"batch_external={len(turn_external_ids)} "
++                                f"proactive={int(bool(turn_start_context.proactive_triggered))} "
++                                f"timeout={int(bool(turn_start_context.timeout_triggered))}"
++                            )
+ 
+                         cycle_detail, round_text = await self._start_cycle_round(round_index)
+                         state = CycleRuntimeState()
+@@ -931,6 +1003,9 @@
+ 
+                             cached_messages = interrupt_result.retry_messages
+                             trigger_message = interrupt_result.retry_messages[-1]
++                            retry_ids, retry_verified = self._classify_batch(interrupt_result.retry_messages)
++                            turn_external_ids.extend(retry_ids)
++                            turn_sources_verified = turn_sources_verified and retry_verified
+                             continue
+                         except asyncio.CancelledError:
+                             state.cycle_end = CycleEnd("cancelled", "思考任务已取消，本轮结束。")
+@@ -948,6 +1023,7 @@
+                                 round_index += 1
+                 finally:
+                     self._active_logical_turn_id = None
++                    self._turn_facts = TurnFacts()
+                     if self._runtime._agent_state == self._runtime._STATE_RUNNING:
+                         self._runtime._enter_stop_state()
+                     if self._runtime._running:
+@@ -1956,6 +2032,8 @@
+         tool_monitor_results: list[dict[str, Any]] = []
+         deferred_post_history_messages: list[LLMContextMessage] = []
+         should_stop_after_execution = False
++        executed_tool_results: list[tuple[ToolCall, ToolExecutionResult]] = []
++        final_reply_signals: dict[str, bool | None] = {}
+ 
+         if self._runtime._tool_registry is None:
+             total_tool_count = len(tool_calls)
+@@ -1999,6 +2077,11 @@
+                 f"工具执行 · {invocation.tool_name}",
+                 f"第 {tool_index}/{total_tool_count} 个工具",
+             )
++            if tool_call.func_name == "reply":
++                # final_reply 是 Host 实验判定用的结构化信号：先读取，再从传给 reply 工具的参数中移除，
++                # 避免它进入 replyer 或 Hook。
++                final_reply_signals[tool_call.call_id] = extract_final_reply_signal(tool_call.args)
++                strip_final_reply_argument(invocation)
+             tool_started_at = time.time()
+             is_unexpanded_tool = not self._runtime.is_action_tool_currently_available(invocation.tool_name)
+             result = await self._runtime._tool_registry.invoke(invocation, execution_context)
+@@ -2059,6 +2142,7 @@
+             if not result.success and tool_call.func_name == "reply":
+                 logger.warning(f"{self._runtime.log_prefix} 回复工具未生成可见消息，将继续下一轮循环")
+ 
++            executed_tool_results.append((tool_call, result))
+             if result.success and result.stop_after_execution:
+                 should_stop_after_execution = True
+ 
+@@ -2083,4 +2167,101 @@
+                 tool_result_summaries,
+                 tool_monitor_results,
+             )
++        # 默认关闭的实验选项：判定与停止之间没有 await，期间不会有新消息插入。
++        if self._should_stop_after_single_reply(
++            tool_calls, executed_tool_results, deferred_post_history_messages, final_reply_signals
++        ):
++            self._runtime._end_planner_continuation()
++            self._runtime._reset_consecutive_wait_count("reply_local_stop")
++            self._runtime._enter_stop_state()
++            return True, REPLY_LOCAL_STOP_REASON, tool_result_summaries, tool_monitor_results
+         return False, "", tool_result_summaries, tool_monitor_results
++
++    def _should_stop_after_single_reply(
++        self,
++        tool_calls: list[ToolCall],
++        executed: list[tuple[ToolCall, ToolExecutionResult]],
++        deferred_post_history_messages: list[Any],
++        final_reply_signals: dict[str, bool | None],
++    ) -> bool:
++        """批次末尾的保守判定：只在结构化事实全部满足时才跳过多余的一次 planner 调用。"""
++
++        settings = get_token_opt_settings("reply_termination")
++        if not bool(settings.get("enabled")):
++            return False
++        try:
++            outcomes: list[ToolOutcome] = []
++            for tool_call, result in executed:
++                if tool_call.func_name != "reply":
++                    outcomes.append(ToolOutcome(tool_name=tool_call.func_name, success=bool(result.success)))
++                    continue
++                structured = result.structured_content if isinstance(result.structured_content, dict) else {}
++                raw_args = tool_call.args if isinstance(tool_call.args, dict) else {}
++                if set(raw_args) == {"arguments"} and isinstance(raw_args["arguments"], str):
++                    import json
++
++                    try:
++                        parsed_args = json.loads(raw_args["arguments"])
++                    except ValueError:
++                        parsed_args = {}
++                    raw_args = parsed_args if isinstance(parsed_args, dict) else {}
++                target = self._runtime.find_source_message_by_id(str(raw_args.get("msg_id") or "").strip())
++                send_results = structured.get("send_results")
++                segments = structured.get("reply_segments")
++                segment_flags = (
++                    tuple(item.get("success") is True for item in send_results if isinstance(item, dict))
++                    if isinstance(send_results, list)
++                    else ()
++                )
++                outcomes.append(
++                    ToolOutcome(
++                        tool_name="reply",
++                        success=bool(result.success),
++                        target_message_id=str(getattr(target, "message_id", "") or "") if target is not None else "",
++                        final_reply=final_reply_signals.get(tool_call.call_id),
++                        segment_send_success=segment_flags,
++                        expected_segments=len(segments) if isinstance(segments, list) else 0,
++                        has_extra_results=bool(
++                            result.content_items
++                            or result.post_history_messages
++                            or deferred_post_history_messages
++                            or result.stop_after_execution
++                        ),
++                    )
++                )
++            queue = getattr(self._runtime, "_internal_turn_queue", None)
++            turn = self._turn_facts
++            try:
++                focus_mode = bool(
++                    self._runtime._focus_group is not None or self._runtime._is_focus_mode_active_for_current_chat()
++                )
++            except Exception:
++                focus_mode = True
++            turn = TurnFacts(
++                round_index=turn.round_index,
++                batch_external_message_ids=turn.batch_external_message_ids,
++                sources_verified=turn.sources_verified,
++                proactive_triggered=turn.proactive_triggered,
++                timeout_triggered=turn.timeout_triggered,
++                focus_mode=focus_mode,
++            )
++            decision = decide_reply_termination(
++                settings,
++                turn,
++                [tool_call.func_name for tool_call in tool_calls],
++                outcomes,
++                RuntimeFacts(
++                    has_pending_messages=bool(self._runtime._has_pending_messages()),
++                    has_pending_wait=bool(self._runtime._has_pending_wait_tool_call()),
++                    internal_queue_empty=bool(queue.empty()) if queue is not None else None,
++                ),
++            )
++        except Exception as exc:
++            logger.warning(f"{self._runtime.log_prefix} reply_termination decision=continue reason=error:{type(exc).__name__}")
++            return False
++        logger.info(
++            f"{self._runtime.log_prefix} reply_termination decision={'stop' if decision.stop else 'continue'} "
++            f"reason={decision.reason} round={self._turn_facts.round_index} "
++            f"batch_external={len(self._turn_facts.batch_external_message_ids)} tools={len(tool_calls)}"
++        )
++        return decision.stop
+--- /dev/null
++++ b/src/maisaka/reply_termination.py
+@@ -0,0 +1,203 @@
++"""窄范围“回复成功后本地结束本轮”的判定（实验选项，默认关闭）。
++
++只在 planner 工具批次执行完毕之后判断，不在 reply 工具上设置 ``stop_after_execution``。
++判定是纯函数：输入全是结构化事实，**不读取回复文本，也不依据私聊/群聊身份猜测**。
++任何一项未知或不满足，都返回“继续原流程”，并带上单独的原因代码。
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Mapping, Sequence
++
++# 停止原因；cycle_end.reason 同名，便于监控中单独统计。
++REPLY_LOCAL_STOP_REASON = "reply_completed_local_stop"
++
++MODE_EXPLICIT = "explicit"
++CONTINUE_UNKNOWN_MODE = "unknown_mode"
++
++# 继续原流程的原因代码
++CONTINUE_DISABLED = "disabled"
++CONTINUE_NOT_FIRST_ROUND = "not_first_round"
++CONTINUE_FOCUS_MODE = "focus_mode"
++CONTINUE_INTERNAL_TRIGGER = "proactive_or_timeout_turn"
++CONTINUE_SOURCE_UNVERIFIED = "batch_source_unverified_or_non_chat"
++CONTINUE_BATCH_NOT_SINGLE = "batch_not_single_external_message"
++CONTINUE_MULTIPLE_TOOLS = "multiple_or_non_reply_tools"
++CONTINUE_REPLY_FAILED = "reply_not_successful"
++CONTINUE_SEGMENTS_UNCONFIRMED = "segments_not_all_confirmed"
++CONTINUE_TARGET_MISMATCH = "reply_target_not_the_batch_message"
++CONTINUE_EXTRA_RESULTS = "extra_tool_results_or_media"
++CONTINUE_NO_SIGNAL = "no_explicit_final_signal"
++CONTINUE_PENDING_MESSAGES = "new_messages_pending"
++CONTINUE_PENDING_WAIT = "wait_pending"
++CONTINUE_INTERNAL_QUEUE = "internal_trigger_queued"
++CONTINUE_UNKNOWN_STATE = "runtime_state_unknown"
++STOP_OK = "stop"
++
++
++@dataclass(frozen=True)
++class TurnFacts:
++    """本次内部轮次的来源事实，由 run_loop 在轮次开始时记录。"""
++
++    round_index: int = 0
++    batch_external_message_ids: tuple[str, ...] = ()
++    proactive_triggered: bool = False
++    timeout_triggered: bool = False
++    focus_mode: bool = False
++    # 批次里每一项都已确认是“普通外部聊天消息”（非机器人、非命令、非通知、有消息 ID）；默认 False（未知即禁用）。
++    sources_verified: bool = False
++
++
++@dataclass(frozen=True)
++class ToolOutcome:
++    """一次已执行的工具调用的结构化结果。"""
++
++    tool_name: str
++    success: bool
++    target_message_id: str = ""
++    final_reply: bool | None = None
++    segment_send_success: tuple[bool, ...] = ()
++    expected_segments: int = 0
++    has_extra_results: bool = False
++
++
++@dataclass(frozen=True)
++class RuntimeFacts:
++    """判定时刻的运行时状态；任何字段为 None 表示无法确认。"""
++
++    has_pending_messages: bool | None
++    has_pending_wait: bool | None
++    internal_queue_empty: bool | None
++
++
++@dataclass(frozen=True)
++class Decision:
++    stop: bool
++    reason: str
++
++
++def extract_final_reply_signal(arguments: Any) -> bool | None:
++    """从 reply 工具参数读取结构化 final_reply；只接受布尔值，其它一律视为未给出。"""
++
++    if not isinstance(arguments, Mapping):
++        return None
++    if set(arguments) == {"arguments"} and isinstance(arguments["arguments"], str):
++        import json
++
++        try:
++            parsed = json.loads(arguments["arguments"])
++        except ValueError:
++            return None
++        arguments = parsed if isinstance(parsed, Mapping) else {}
++    value = arguments.get("final_reply")
++    return value if isinstance(value, bool) else None
++
++
++FINAL_REPLY_SCHEMA = {
++    "type": "boolean",
++    "description": (
++        "可选。只有这条回复已经完整回应、没有任何后续承诺（如稍后查询、继续说明）、"
++        "也不需要再查看新信息或调用其他工具时才填 true；不确定就不要填。"
++    ),
++}
++
++
++def _definition_name(definition: Mapping[str, Any]) -> str:
++    function = definition.get("function")
++    source = function if isinstance(function, Mapping) else definition
++    return str(source.get("name") or "")
++
++
++def add_final_reply_parameter(definitions: Sequence[Any], settings: Mapping[str, Any]) -> list[Any]:
++    """仅在实验开启（explicit）时，为 reply 的工具定义追加可选 final_reply 参数。
++
++    未开启、形状无法识别时原样返回，所以默认路径的工具定义字节不变。
++    """
++
++    if not (settings.get("enabled") and settings.get("mode") == MODE_EXPLICIT):
++        return list(definitions)
++    import copy
++
++    result: list[Any] = []
++    for definition in definitions:
++        if isinstance(definition, Mapping) and _definition_name(definition) == "reply":
++            updated = copy.deepcopy(dict(definition))
++            holder = updated.get("function") if isinstance(updated.get("function"), dict) else updated
++            for key in ("parameters", "input_schema", "parameters_schema"):
++                schema = holder.get(key)
++                if isinstance(schema, dict) and isinstance(schema.get("properties"), dict):
++                    schema["properties"].setdefault("final_reply", copy.deepcopy(FINAL_REPLY_SCHEMA))
++                    break
++            definition = updated
++        result.append(definition)
++    return result
++
++
++def strip_final_reply_argument(invocation: Any) -> None:
++    """从即将传给 reply 工具的参数中移除 final_reply（含被 arguments 字符串包裹的形式）。"""
++
++    arguments = getattr(invocation, "arguments", None)
++    if not isinstance(arguments, dict):
++        return
++    arguments.pop("final_reply", None)
++    if set(arguments) == {"arguments"} and isinstance(arguments["arguments"], str):
++        import json
++
++        try:
++            parsed = json.loads(arguments["arguments"])
++        except ValueError:
++            return
++        if isinstance(parsed, dict) and "final_reply" in parsed:
++            parsed.pop("final_reply")
++            arguments["arguments"] = json.dumps(parsed, ensure_ascii=False)
++
++
++def decide(
++    settings: Mapping[str, Any],
++    turn: TurnFacts,
++    planned_tool_names: Sequence[str],
++    outcomes: Sequence[ToolOutcome],
++    runtime: RuntimeFacts,
++) -> Decision:
++    if not bool(settings.get("enabled")):
++        return Decision(False, CONTINUE_DISABLED)
++    if turn.round_index != 0:
++        return Decision(False, CONTINUE_NOT_FIRST_ROUND)
++    if turn.focus_mode:
++        return Decision(False, CONTINUE_FOCUS_MODE)
++    if turn.proactive_triggered or turn.timeout_triggered:
++        return Decision(False, CONTINUE_INTERNAL_TRIGGER)
++    if not turn.sources_verified:
++        return Decision(False, CONTINUE_SOURCE_UNVERIFIED)
++    if len(turn.batch_external_message_ids) != 1 or not turn.batch_external_message_ids[0]:
++        return Decision(False, CONTINUE_BATCH_NOT_SINGLE)
++    if len(planned_tool_names) != 1 or planned_tool_names[0] != "reply" or len(outcomes) != 1:
++        return Decision(False, CONTINUE_MULTIPLE_TOOLS)
++    outcome = outcomes[0]
++    if outcome.tool_name != "reply" or not outcome.success:
++        return Decision(False, CONTINUE_REPLY_FAILED)
++    if (
++        outcome.expected_segments <= 0
++        or len(outcome.segment_send_success) != outcome.expected_segments
++        or not all(outcome.segment_send_success)
++    ):
++        return Decision(False, CONTINUE_SEGMENTS_UNCONFIRMED)
++    if outcome.has_extra_results:
++        return Decision(False, CONTINUE_EXTRA_RESULTS)
++    if outcome.target_message_id != turn.batch_external_message_ids[0]:
++        return Decision(False, CONTINUE_TARGET_MISMATCH)
++    if settings.get("mode") != MODE_EXPLICIT:
++        return Decision(False, CONTINUE_UNKNOWN_MODE)
++    # 只接受明确的 final_reply=true；缺失、false、非布尔都继续原流程。
++    if outcome.final_reply is not True:
++        return Decision(False, CONTINUE_NO_SIGNAL)
++    if None in (runtime.has_pending_messages, runtime.has_pending_wait, runtime.internal_queue_empty):
++        return Decision(False, CONTINUE_UNKNOWN_STATE)
++    if runtime.has_pending_messages:
++        return Decision(False, CONTINUE_PENDING_MESSAGES)
++    if runtime.has_pending_wait:
++        return Decision(False, CONTINUE_PENDING_WAIT)
++    if not runtime.internal_queue_empty:
++        return Decision(False, CONTINUE_INTERNAL_QUEUE)
++    return Decision(True, STOP_OK)
+--- a/src/maisaka/turn_trigger/idle_backoff.py
++++ b/src/maisaka/turn_trigger/idle_backoff.py
+@@ -5,7 +5,7 @@
+ 
+ from src.common.logger import get_logger
+ from src.config.config import global_config
+-from src.maisaka.mode_policy import is_idle_cycle_reason
++from src.maisaka.mode_policy import REPLY_LOCAL_STOP_CYCLE_REASON, is_idle_cycle_reason
+ 
+ if TYPE_CHECKING:
+     from src.maisaka.runtime import MaisakaHeartFlowChatting
+@@ -50,6 +50,12 @@
+             self.reset()
+             return
+ 
++        if normalized_reason == REPLY_LOCAL_STOP_CYCLE_REASON:
++            # 原流程：回复轮记为 tool_continue（重置），随后的 stop 轮再记一次空闲。
++            # 本地结束把两者合为一轮，先重置再计一次，退避计数与原流程一致。
++            self._count = 0
++            self._until = 0.0
++
+         self._count += 1
+         backoff_seconds = self._get_backoff_seconds()
+         if backoff_seconds <= 0:
+--- a/src/person_info/person_info.py
++++ b/src/person_info/person_info.py
+@@ -515,13 +515,17 @@
+     evidence_source: str = "user_supported",
+     evidence_message_ids: Optional[List[str]] = None,
+     fact_claim: Optional[Dict[str, Any]] = None,
+-) -> None:
++) -> Optional[bool]:
+     """将人物事实写入长期记忆系统。
+ 
+     Args:
+         person_name: 人物名称
+         memory_content: 记忆内容
+         chat_id: 聊天ID
++
++    Returns:
++        True 表示记忆服务确认写入成功；False 表示写入失败或异常；
++        None 表示在到达写入前被跳过（参数缺失、会话或人物未知），结果未确认。
+     """
+     clean_content = str(memory_content or "").strip()
+     if not clean_content:
+@@ -590,11 +594,13 @@
+             logger.info(
+                 f"成功写回人物事实到长期记忆: person={participant_name} person_id={person_id} chat_id={clean_chat_id}"
+             )
+-        else:
+-            logger.warning(
+-                f"人物事实写回长期记忆失败: person={participant_name} person_id={person_id} "
+-                f"chat_id={clean_chat_id} detail={getattr(result, 'detail', '')}"
+-            )
++            return True
++        logger.warning(
++            f"人物事实写回长期记忆失败: person={participant_name} person_id={person_id} "
++            f"chat_id={clean_chat_id} detail={getattr(result, 'detail', '')}"
++        )
++        return False
+ 
+     except Exception as e:
+         logger.error(f"存储人物记忆失败: {e}")
++        return False
+--- a/src/services/memory_flow_service.py
++++ b/src/services/memory_flow_service.py
+@@ -8,6 +8,7 @@
+ import asyncio
+ import json
+ import os
++import re
+ import time
+ 
+ from json_repair import repair_json
+@@ -24,7 +25,17 @@
+ from src.A_memorix.core.image.component_paths import build_chat_external_ref, iter_message_image_components
+ from src.A_memorix.host_service import a_memorix_host_service
+ 
++from src.common.token_optimizations import fingerprint as _opt_fingerprint
++from src.common.token_optimizations import get_settings as _get_token_opt_settings
++
+ from .image_writeback_journal import ImageWritebackJournal
++from .person_fact_dedup import (
++    EXTRACTION_VERSION as _FACT_EXTRACTION_VERSION,
++    STATUS_DONE as _DEDUP_DONE,
++    PersonFactDedupCache,
++    build_key as _build_dedup_key,
++    fact_digest as _fact_digest,
++)
+ from .person_fact_reverification import reclassify_historical_person_facts
+ 
+ logger = get_logger("memory_flow_service")
+@@ -43,6 +54,7 @@
+         self._reclassify_task: Optional[asyncio.Task] = None
+         self._stopping = False
+         self._extractor: Any | None = None
++        self._dedup = PersonFactDedupCache()
+ 
+     async def start(self) -> None:
+         if self._worker_task is not None and not self._worker_task.done():
+@@ -153,8 +165,148 @@
+             return
+         user_evidence_text = self._format_user_evidence(evidence)
+ 
+-        facts = await self._extract_facts(target_person, reply_text, user_evidence_text)
++        dedup_settings = _get_token_opt_settings("person_fact_dedup")
++        if not bool(dedup_settings.get("enabled")):
++            await self._extract_and_store(message, target_person, evidence, reply_text, user_evidence_text, None, None)
++            return
++
++        self._dedup.configure(dedup_settings)
++        dedup_key = self._build_evidence_dedup_key(message, target_person, evidence)
++        if dedup_key is None:
++            # 无法证明权限/记忆策略与证据仍然有效：不复用，走原流程。
++            await self._extract_and_store(message, target_person, evidence, reply_text, user_evidence_text, None, None)
++            return
++        async with self._dedup.guard(dedup_key):
++            await self._extract_and_store(
++                message, target_person, evidence, reply_text, user_evidence_text, dedup_key, self._dedup
++            )
++
++    @staticmethod
++    def _memory_policy_fingerprint(person: Person) -> Optional[str]:
++        """记忆写回相关配置（含聊天过滤名单等）与人物状态的指纹；读不到就返回 None。"""
++
++        try:
++            cfg = global_config.a_memorix
++            dumped = cfg.model_dump() if hasattr(cfg, "model_dump") else None
++            if not isinstance(dumped, dict):
++                return None
++            return _opt_fingerprint(
++                dumped,
++                bool(getattr(person, "is_known", False)),
++                str(getattr(person, "person_name", "") or ""),
++                length=24,
++            )
++        except Exception:
++            return None
++
++    def _build_evidence_dedup_key(self, message: Any, person: Person, evidence: PersonFactEvidence) -> Optional[str]:
++        policy_fp = self._memory_policy_fingerprint(person)
++        if policy_fp is None:
++            return None
++        session = getattr(message, "session", None)
++        session_id = str(getattr(message, "session_id", "") or getattr(session, "session_id", "") or "").strip()
++        platform = str(getattr(session, "platform", "") or getattr(message, "platform", "") or "").strip()
++        group_id = str(getattr(session, "group_id", "") or "").strip()
++        user_id_scope = str(getattr(session, "user_id", "") or "").strip()
++        # 私聊与群聊、不同会话/对象的授权范围不同，不能共享结果；并入记忆策略指纹。
++        scope = (
++            f"{platform}|{session_id}|{'group:' + group_id if group_id else 'private:' + user_id_scope}|{policy_fp}"
++        )
++        descriptors: List[List[str]] = []
++        target_ids = set()
++        latest_target_ts: Optional[float] = None
++        for item in evidence.target_messages:
++            descriptors.append(["target", *self._evidence_item_descriptor(item)])
++            target_ids.add(str(getattr(item, "message_id", "") or "").strip())
++            ts = self._extract_message_timestamp(item)
++            if ts is not None and (latest_target_ts is None or ts > latest_target_ts):
++                latest_target_ts = ts
++        for item in evidence.context_messages:
++            if str(getattr(item, "message_id", "") or "").strip() in target_ids:
++                continue
++            # 只排除“目标发言之后新增”的机器人分段（它们不是事实来源，且同一回复的各分段会不断新增）。
++            # 目标发言之前的机器人上下文（例如先前的提问）会影响抽取，必须进入键；
++            # 身份、时间任一未知时按“有影响”处理（进入键）。
++            platform_name = str(getattr(item, "platform", "") or "").strip()
++            user_info = getattr(getattr(item, "message_info", None), "user_info", None)
++            sender_id = str(getattr(user_info, "user_id", "") or getattr(item, "user_id", "") or "").strip()
++            is_bot_known = bool(platform_name and sender_id and is_bot_self(platform_name, sender_id) is True)
++            ts = self._extract_message_timestamp(item)
++            if is_bot_known and ts is not None and latest_target_ts is not None and ts > latest_target_ts:
++                continue
++            descriptors.append(["context", *self._evidence_item_descriptor(item)])
++        return _build_dedup_key(
++            person_id=str(getattr(person, "person_id", "") or "").strip(),
++            scope=scope,
++            evidence=descriptors,
++            extraction_version=f"{_FACT_EXTRACTION_VERSION}:{_opt_fingerprint(self._extraction_rules_text())}",
++        )
++
++    @staticmethod
++    def _evidence_item_descriptor(item: Any) -> List[str]:
++        text = str(getattr(item, "processed_plain_text", "") or "").strip()
++        revision = (
++            getattr(item, "modified_time", None)
++            or getattr(item, "edit_time", None)
++            or getattr(item, "revision", None)
++            or ""
++        )
++        return [
++            str(getattr(item, "message_id", "") or "").strip(),
++            _opt_fingerprint(text, length=24),
++            str(revision),
++        ]
++
++    async def _extract_and_store(
++        self,
++        message: Any,
++        target_person: Person,
++        evidence: PersonFactEvidence,
++        reply_text: str,
++        user_evidence_text: str,
++        dedup_key: Optional[str],
++        dedup: Optional[PersonFactDedupCache],
++    ) -> None:
++        """抽取并写入事实；仅在抽取与必要写入都确认成功后才记录去重状态。"""
++
++        person_fp = _opt_fingerprint(str(getattr(target_person, "person_id", "") or ""))
++        key_fp = dedup_key[:12] if dedup_key else "-"
++        previous = dedup.lookup(dedup_key) if dedup is not None and dedup_key else None
++        if previous is not None and previous.status == _DEDUP_DONE:
++            logger.info(
++                f"person_fact_writeback_attribution action=skip reason=dedup_hit person={person_fp} "
++                f"evidence_key={key_fp} facts={previous.fact_count}"
++            )
++            return
++        already_written = set(previous.written) if previous is not None else set()
++        carried_pending = list(previous.pending) if previous is not None else []
++
++        extracted_ok, facts = await self._extract_facts_checked(
++            target_person, reply_text, user_evidence_text, rules_first=dedup is not None
++        )
++        # 上次已抽取但未确认写入的候选必须保留；再次抽取漏掉它们不能当作完成。
++        known_digests = set()
++        merged: List[Any] = []
++        for item in [*facts, *carried_pending]:
++            fact_text = str(item.get("fact", "") if isinstance(item, dict) else item).strip()
++            digest = _fact_digest(fact_text) if fact_text else ""
++            if digest and digest not in known_digests:
++                known_digests.add(digest)
++                merged.append(item)
++        facts = merged
+         if not facts:
++            if not extracted_ok:
++                logger.info(
++                    f"person_fact_writeback_attribution action=extract reason=unknown_result_not_cached "
++                    f"person={person_fp} evidence_key={key_fp}"
++                )
++                return
++            if dedup is not None and dedup_key:
++                dedup.record_success(dedup_key, fact_count=0)
++            logger.info(
++                f"person_fact_writeback_attribution action=extract reason=empty_result person={person_fp} "
++                f"evidence_key={key_fp} facts=0"
++            )
+             return
+ 
+         session_id = str(
+@@ -174,20 +326,58 @@
+             for item in evidence.target_messages
+             if str(getattr(item, "message_id", "") or "").strip()
+         ]
+-        for item in facts:
+-            fact = str(item.get("fact", "") if isinstance(item, dict) else item).strip()
+-            if not fact:
+-                continue
+-            # 语义判断由提取模型完成，来源 ID 由本次实际输入的消息确定。
+-            # 记录完整的提取上下文，不把模型生成的消息 ID 写成真实证据。
+-            await store_person_memory_from_answer(
+-                person_name,
+-                fact,
+-                session_id,
+-                person_id=str(getattr(target_person, "person_id", "") or "").strip(),
+-                evidence_source="user_supported",
+-                evidence_message_ids=evidence_message_ids,
+-                fact_claim={"authority": "direct_user", "stability": "stable", "profile_section": "stable_facts"},
++        written = set(already_written)
++        all_confirmed = True
++        unconfirmed: List[Any] = []
++        try:
++            for item in facts:
++                fact = str(item.get("fact", "") if isinstance(item, dict) else item).strip()
++                if not fact:
++                    continue
++                digest = _fact_digest(fact)
++                if digest in written:
++                    continue
++                # 语义判断由提取模型完成，来源 ID 由本次实际输入的消息确定。
++                # 记录完整的提取上下文，不把模型生成的消息 ID 写成真实证据。
++                stored = await store_person_memory_from_answer(
++                    person_name,
++                    fact,
++                    session_id,
++                    person_id=str(getattr(target_person, "person_id", "") or "").strip(),
++                    evidence_source="user_supported",
++                    evidence_message_ids=evidence_message_ids,
++                    fact_claim={"authority": "direct_user", "stability": "stable", "profile_section": "stable_facts"},
++                )
++                if stored is True:
++                    written.add(digest)
++                else:
++                    all_confirmed = False
++                    unconfirmed.append(item)
++        except BaseException:
++            if dedup is not None and dedup_key:
++                # 抛出点之后的候选尚未处理：全部保留为待写入（已写入的摘要不会重复写）。
++                remaining = [
++                    item
++                    for item in facts
++                    if _fact_digest(str(item.get("fact", "") if isinstance(item, dict) else item).strip())
++                    not in written
++                ]
++                dedup.record_partial(dedup_key, written=written, pending=remaining)
++            raise
++        if dedup is None or not dedup_key:
++            return
++        # 抽取结果本身不完整/无法确认（无效项、截断）时，即使写入都成功也不记为完成。
++        if all_confirmed and extracted_ok:
++            dedup.record_success(dedup_key, fact_count=len(written), written=written)
++            logger.info(
++                f"person_fact_writeback_attribution action=write reason=success person={person_fp} "
++                f"evidence_key={key_fp} facts={len(written)}"
++            )
++        else:
++            dedup.record_partial(dedup_key, written=written, pending=unconfirmed)
++            logger.info(
++                f"person_fact_writeback_attribution action=write reason=partial_or_unconfirmed_not_cached "
++                f"person={person_fp} evidence_key={key_fp} written={len(written)}"
+             )
+ 
+     def _resolve_target_person(self, message: Any) -> Optional[Person]:
+@@ -388,16 +578,14 @@
+         target_marker = " [目标用户发言]" if mark_target else ""
+         return f"{prefix}{text}{target_marker}"
+ 
+-    async def _extract_facts(self, person: Person, reply_text: str, user_evidence_text: str) -> List[Any]:
+-        person_name = str(getattr(person, "person_name", "") or getattr(person, "nickname", "") or person.person_id)
+-        prompt = f"""你要从用户原始发言中提取“关于{person_name}的稳定事实”。
+-
+-目标人物：{person_name}
+-用户原始发言证据：
+-{user_evidence_text}
+-
+-机器人回复：
+-{reply_text}
++    @staticmethod
++    def _extraction_rules_text() -> str:
++        """固定抽取规则（不含人物、证据或回复）。放在提示词最前面，便于服务端前缀缓存。
++
++        事实只来自“目标用户原始发言”的约束保持不变。
++        """
++
++        return """你要从用户原始发言中提取“关于目标人物的稳定事实”。
+ 
+ 请只提取满足以下条件的事实：
+ 1. 事实值必须能被“目标用户原始发言”直接支持，不能只来自机器人回复或邻近上下文。
+@@ -416,8 +604,33 @@
+ - 与目标人物无关的信息
+ 
+ 严格输出 JSON 数组，每项包含 fact、evidence_message_id、evidence_quote。证据片段必须逐字摘自目标用户原始发言。请勿编造消息 ID。例：
+-[{{"fact":"他喜欢打游戏","evidence_message_id":"消息ID","evidence_quote":"我喜欢打游戏"}}]
++[{"fact":"他喜欢打游戏","evidence_message_id":"消息ID","evidence_quote":"我喜欢打游戏"}]
+ 如果没有可写入的事实，输出 []"""
++
++    @classmethod
++    def _build_rules_first_prompt(cls, person_name: str, reply_text: str, user_evidence_text: str) -> str:
++        return (
++            f"{cls._extraction_rules_text()}\n\n"
++            f"目标人物：{person_name}\n"
++            f"用户原始发言证据：\n{user_evidence_text}\n\n"
++            f"机器人回复：\n{reply_text}\n\n"
++            "请按上述规则输出 JSON 数组。"
++        )
++
++    async def _extract_facts(self, person: Person, reply_text: str, user_evidence_text: str) -> List[Any]:
++        _ok, facts = await self._extract_facts_checked(person, reply_text, user_evidence_text, rules_first=False)
++        return facts
++
++    async def _extract_facts_checked(
++        self, person: Person, reply_text: str, user_evidence_text: str, *, rules_first: bool
++    ) -> tuple[bool, List[Any]]:
++        """返回 (抽取是否确认成功, 事实列表)。模型异常、空响应、无法解析为数组都视为未知结果。"""
++
++        person_name = str(getattr(person, "person_name", "") or getattr(person, "nickname", "") or person.person_id)
++        if rules_first:
++            prompt = self._build_rules_first_prompt(person_name, reply_text, user_evidence_text)
++        else:
++            prompt = self._build_legacy_prompt(person_name, reply_text, user_evidence_text)
+         try:
+             if self._extractor is None:
+                 from src.services.llm_service import LLMServiceClient
+@@ -426,8 +639,71 @@
+             response_result = await self._extractor.generate_response(prompt)
+         except Exception as exc:
+             logger.debug(f"人物事实提取模型调用失败: {exc}")
+-            return []
+-        return self._parse_fact_items(response_result.response)
++            return False, []
++        return self._parse_fact_items_checked(response_result.response)
++
++    @staticmethod
++    def _parse_fact_items_checked(raw: str) -> tuple[bool, List[Any]]:
++        text = str(raw or "").strip()
++        if not text:
++            return False, []
++        # 旧行为：先修复再解析，得到的事实照旧写入；但“是否完整成功”只看原始合法 JSON。
++        items = PersonFactWritebackService._parse_fact_items(text)
++        candidate = text
++        fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
++        if fenced:
++            candidate = fenced.group(1)  # 完整的代码围栏内是合法 JSON 也算
++        try:
++            payload = json.loads(candidate)
++        except ValueError:
++            return False, items  # 需要修复（如被截断）才能解析：不是完整结果，不可缓存为完成
++        if not isinstance(payload, list):
++            return False, items
++        if not payload:
++            return True, items  # 真正的 []：确认没有可写入事实
++        # 非空数组：每一项必须是字符串，或 fact 为字符串的对象，且长度足够；
++        # 任何无效项、重复之外的丢弃、截断都不是可缓存的“完整成功”。
++        valid_unique = set()
++        for raw_item in payload:
++            fact = raw_item.get("fact") if isinstance(raw_item, dict) else raw_item
++            if not isinstance(fact, str) or len(fact.strip()) < 4:
++                return False, items
++            valid_unique.add(fact.strip())
++        if len(valid_unique) > len(items):
++            return False, items
++        return True, items
++
++    @staticmethod
++    def _build_legacy_prompt(person_name: str, reply_text: str, user_evidence_text: str) -> str:
++        prompt = f"""你要从用户原始发言中提取“关于{person_name}的稳定事实”。
++
++目标人物：{person_name}
++用户原始发言证据：
++{user_evidence_text}
++
++机器人回复：
++{reply_text}
++
++请只提取满足以下条件的事实：
++1. 事实值必须能被“目标用户原始发言”直接支持，不能只来自机器人回复或邻近上下文。
++2. 明确是关于目标人物本人的信息。
++3. 具有相对稳定性，可以作为长期记忆保存。
++4. 用简洁中文陈述句表达。
++5. 如果用户原始发言中出现“我/我的/自己”，默认指目标人物，请先改写成关于目标人物的第三人称事实再输出。
++6. 邻近上下文只能用于补全目标用户短答、省略、被追问的问题或代词指向。例如上下文问“你对什么过敏？”，目标用户答“青霉素”，可以提取“目标人物对青霉素过敏”。
++7. 如果完整事实只能靠机器人回复或邻近上下文中的新增事实值成立，而目标用户原始发言没有确认或给出该事实值，不要提取。
++
++不要提取：
++- 机器人的情绪、计划、临时动作、客套话
++- 仅由机器人提出的建议、猜测、玩笑、回忆或承诺
++- 只适用于当前时刻的短期安排
++- 不确定、猜测、反问
++- 与目标人物无关的信息
++
++严格输出 JSON 数组，每项包含 fact、evidence_message_id、evidence_quote。证据片段必须逐字摘自目标用户原始发言。请勿编造消息 ID。例：
++[{{"fact":"他喜欢打游戏","evidence_message_id":"消息ID","evidence_quote":"我喜欢打游戏"}}]
++如果没有可写入的事实，输出 []"""
++        return prompt
+ 
+     @staticmethod
+     def _parse_fact_items(raw: str) -> List[Any]:
+--- /dev/null
++++ b/src/services/person_fact_dedup.py
+@@ -0,0 +1,149 @@
++"""人物事实写回的进程内去重缓存（仅标准库）。
++
++只在“抽取与必要写入都确认成功”之后记录；异常、超时、无法解析、写入未知都不记录为成功。
++进程重启后缓存为空，行为回退到“每个分段都可能再抽取一次”的原路径，不会丢失事实。
++"""
++
++from __future__ import annotations
++
++from collections import OrderedDict
++from contextlib import asynccontextmanager
++from dataclasses import dataclass, field
++from typing import Any, AsyncIterator, Callable, Dict, FrozenSet, Iterable, Optional
++
++import asyncio
++import hashlib
++import json
++import time
++
++# 抽取规则或解析逻辑有语义变化时递增；提示词规则文本的哈希另外并入键。
++EXTRACTION_VERSION = "pf-extract-v2"
++
++STATUS_DONE = "done"
++STATUS_PARTIAL = "partial"
++
++
++@dataclass
++class DedupEntry:
++    status: str
++    expires_at: float
++    fact_count: int = 0
++    written: FrozenSet[str] = field(default_factory=frozenset)
++    # 已抽取但尚未确认写入的候选；重试时必须保留，不能因模型第二次漏掉而视为完成。
++    pending: tuple = ()
++
++
++def fact_digest(fact: str) -> str:
++    return hashlib.sha256(" ".join(str(fact).split()).encode("utf-8")).hexdigest()[:16]
++
++
++def build_key(
++    *,
++    person_id: str,
++    scope: str,
++    evidence: Iterable[Iterable[str]],
++    extraction_version: str,
++) -> str:
++    """人物 + 会话/授权范围 + 证据（消息 ID、内容哈希、修订）+ 抽取版本。
++
++    evidence 的每一项是 (message_id, 内容哈希, 修订标记)；排序后哈希，顺序无关。
++    """
++
++    normalized = sorted([str(part) for part in item] for item in evidence)
++    payload = json.dumps(
++        [str(person_id), str(scope), normalized, str(extraction_version)],
++        ensure_ascii=False,
++        sort_keys=True,
++    )
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++
++class PersonFactDedupCache:
++    def __init__(
++        self,
++        *,
++        ttl_seconds: float = 900.0,
++        empty_ttl_seconds: float = 300.0,
++        partial_ttl_seconds: float = 120.0,
++        max_entries: int = 512,
++        clock: Callable[[], float] = time.monotonic,
++    ) -> None:
++        self.ttl_seconds = float(ttl_seconds)
++        self.empty_ttl_seconds = float(empty_ttl_seconds)
++        self.partial_ttl_seconds = float(partial_ttl_seconds)
++        self.max_entries = max(1, int(max_entries))
++        self._clock = clock
++        self._entries: "OrderedDict[str, DedupEntry]" = OrderedDict()
++        self._locks: Dict[str, asyncio.Lock] = {}
++        self._lock_users: Dict[str, int] = {}
++
++    def __len__(self) -> int:
++        return len(self._entries)
++
++    def configure(self, settings: Dict[str, Any]) -> None:
++        self.ttl_seconds = float(settings.get("ttl_seconds", self.ttl_seconds))
++        self.empty_ttl_seconds = float(settings.get("empty_ttl_seconds", self.empty_ttl_seconds))
++        self.partial_ttl_seconds = float(settings.get("partial_ttl_seconds", self.partial_ttl_seconds))
++        self.max_entries = max(1, int(settings.get("max_entries", self.max_entries)))
++
++    def _purge_expired(self) -> None:
++        now = self._clock()
++        for key in [key for key, entry in self._entries.items() if entry.expires_at <= now]:
++            del self._entries[key]
++
++    def lookup(self, key: str) -> Optional[DedupEntry]:
++        entry = self._entries.get(key)
++        if entry is None:
++            return None
++        if entry.expires_at <= self._clock():
++            del self._entries[key]
++            return None
++        return entry
++
++    def _store(self, key: str, entry: DedupEntry) -> None:
++        self._purge_expired()
++        self._entries[key] = entry
++        self._entries.move_to_end(key)
++        while len(self._entries) > self.max_entries:
++            self._entries.popitem(last=False)
++
++    def record_success(self, key: str, *, fact_count: int, written: Iterable[str] = ()) -> None:
++        ttl = self.ttl_seconds if fact_count > 0 else self.empty_ttl_seconds
++        self._store(
++            key,
++            DedupEntry(STATUS_DONE, self._clock() + ttl, fact_count=fact_count, written=frozenset(written)),
++        )
++
++    def record_partial(self, key: str, *, written: Iterable[str], pending: Iterable[Any] = ()) -> None:
++        """未完成：记住已写入的摘要与待写入候选；整体不视为完成，重试时先补写候选。"""
++
++        self._store(
++            key,
++            DedupEntry(
++                STATUS_PARTIAL,
++                self._clock() + self.partial_ttl_seconds,
++                fact_count=len(frozenset(written)),
++                written=frozenset(written),
++                pending=tuple(pending)[:8],
++            ),
++        )
++
++    def forget(self, key: str) -> None:
++        self._entries.pop(key, None)
++
++    @asynccontextmanager
++    async def guard(self, key: str) -> AsyncIterator[None]:
++        """同一键的并发处理串行化；后到者进入时再检查缓存，避免双写。"""
++
++        lock = self._locks.get(key)
++        if lock is None:
++            lock = self._locks[key] = asyncio.Lock()
++        self._lock_users[key] = self._lock_users.get(key, 0) + 1
++        try:
++            async with lock:
++                yield
++        finally:
++            self._lock_users[key] -= 1
++            if self._lock_users[key] <= 0:
++                self._lock_users.pop(key, None)
++                self._locks.pop(key, None)

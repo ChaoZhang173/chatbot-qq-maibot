@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from maibot_sdk import HookHandler, MaiBotPlugin, Tool
 from maibot_sdk.types import HookMode, HookOrder
 
+from . import context_layers
 from .service import UnifiedService
 from .content_rules import blocked
 
@@ -79,8 +80,27 @@ class UnifiedCorePlugin(MaiBotPlugin):
             return {"action": "continue"}
         # Replacing our own block ensures retries and Planner->Replyer do not
         # retain a previous scope/persona version or accumulate duplicate blocks.
-        filtered = [item for item in items if not is_core_context(item)]
+        filtered = [item for item in items if not is_core_context(item) and not context_layers.is_layer_item(item)]
         request_kind = str(kwargs.get("request_kind") or "replyer")
+        layered = None
+        if request_kind != "expression_selector":
+            # 默认关闭的 P2/P3 实验；None 表示未启用或失败，走下面未改动的旧路径。
+            layers_fn = getattr(self.service, "qq_context_layers", None)
+            layers = await layers_fn(str(session_id)) if layers_fn else None
+            if isinstance(layers, dict):
+                if not layers:
+                    layered = filtered
+                else:
+                    try:
+                        layered = context_layers.apply_layout(
+                            items, layers, str(session_id), context_layers.settings(self.service.policy),
+                            layers["snapshot_stamp"])
+                    except Exception:
+                        layered = None
+        if layered is not None:
+            return {"action": "continue", "modified_kwargs": {
+                **kwargs, "session_id": session_id, "items": layered,
+            }}
         if request_kind == "expression_selector":
             from .compact_context import persona, dumps
             context = "只选择适合当前场景的表达，不执行操作。当前表达偏好：" + dumps(persona(
