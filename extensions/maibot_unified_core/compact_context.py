@@ -30,6 +30,29 @@ def payload(result,native,profiles,*,report=False):
         value['activities']=[{k:str(x.get(k,''))[:140] for k in ('platform','kind','status','text','content','public_visibility') if x.get(k) is not None} for x in result.get('activities',[])[:3]]
     return value
 
+def snapshot_payload(persona_state,native):
+    """低频层：动态人设与群级表达/俚语；不含说话者、query 或权限相关内容。"""
+    return {'persona_version':persona_state.get('version'),
+            'dynamic':persona(persona_state.get('dynamic',{})),
+            'expressions':[{k:str(x.get(k,''))[:100] for k in ('situation','style')} for x in native.get('expressions',[])[:2]],
+            'jargon':[{k:str(x.get(k,''))[:100] for k in ('term','meaning')} for x in native.get('jargon',[])[:2]]}
+
+def dynamic_payload(result,profiles,*,report=False):
+    """即时层：按 query 检索的事实、当前说话者资料、回执活动；每轮重建。"""
+    value={'memory_available':result.get('memory_available',False),
+           'facts':[{'text':str(x.get('text',''))[:180],'source':x.get('source_id')} for x in result.get('facts',[])[:3]],
+           'profile_evidence':[{k:str(x[k])[:180] for k in ('content','text','source_id') if k in x} for x in profiles[:2]]}
+    if report:
+        value['activities']=[{k:str(x.get(k,''))[:140] for k in ('platform','kind','status','text','content','public_visibility') if x.get(k) is not None} for x in result.get('activities',[])[:3]]
+    return value
+
+def render_layer(header,value,budget,optional=('activities','profile_evidence','jargon','expressions','facts')):
+    """只整条删除可选记录，不切断 JSON；header 是必须保留的规则。"""
+    value=json.loads(dumps(value))
+    for key in optional:
+        while len(header+'\n'+dumps(value))>budget and value.get(key):value[key].pop()
+    return header+'\n'+dumps(value)
+
 def render(rules,value,budget=3800):
     # Remove whole optional records/fields, never slice JSON or mandatory policy.
     value=json.loads(dumps(value))

@@ -1,0 +1,38 @@
+{
+  "status": "candidate-not-deployed",
+  "baseline_commit": "ca9ac1432ac59d08589ed00835253789587a7459",
+  "files": {
+    "src/common/token_optimizations.py": {
+      "baseline_sha256": null,
+      "candidate_sha256": "896cfdd31eb847e8865f4095547e207f95e33d234d81a6b409ebf5072e048e13"
+    },
+    "src/maisaka/mode_policy.py": {
+      "baseline_sha256": "a8c0546d37ad48370c50f5ebfa134013c10e0b66235e176be749f72ec32b78fb",
+      "candidate_sha256": "0ffa872876b66b40c8a96d85897b58e5bd773b1e42b7015824d05836e20e8fa9"
+    },
+    "src/maisaka/reasoning_engine.py": {
+      "baseline_sha256": "d79a1db886d725b0a495bbea4d47ba399e94609241c468945778221833e292a1",
+      "candidate_sha256": "c95d69ccfbf23670a7badba0454670d53cf4f7c42bc6147433f23d3d55ede6e3"
+    },
+    "src/maisaka/reply_termination.py": {
+      "baseline_sha256": null,
+      "candidate_sha256": "3830072f9ccecf0b60395847c9dab322fc686d014f3bed8414dede58aaca9aad"
+    },
+    "src/maisaka/turn_trigger/idle_backoff.py": {
+      "baseline_sha256": "7b5ce1980f631ca2e56544139fe3324413c067a556e2ee71a28cc7da96cfd0c1",
+      "candidate_sha256": "fb4f9989b7714141096a7732f5f1d3bf30f51ccc53ce14f12fabecb55e19ee0b"
+    },
+    "src/person_info/person_info.py": {
+      "baseline_sha256": "825ae3b4a1a9402ad5cac224851f226c214577ffb970b71392036d817bf8722a",
+      "candidate_sha256": "8b3d73dd4cce7260775d52f1fb8ccb2adf2def27077bb2810ebf2ce21ce40d11"
+    },
+    "src/services/memory_flow_service.py": {
+      "baseline_sha256": "8e96d4c588fcecfdf92427c22b87ad81cead84ac1a99daa492968657c8d11a1f",
+      "candidate_sha256": "9379996c02115ae73d828a1201db156d959f9919fd94269c69b84067c82e4d12"
+    },
+    "src/services/person_fact_dedup.py": {
+      "baseline_sha256": null,
+      "candidate_sha256": "8c0d9318589d49b4e5857c372182f2f332cc237f2985be4a9d6761b5ba37dc6b"
+    }
+  }
+}
