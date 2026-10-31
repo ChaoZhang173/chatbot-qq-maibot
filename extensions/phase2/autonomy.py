@@ -52,7 +52,7 @@ class Autonomy:
         from .live import policy
         live=e.live_chat();p=policy(c)
         if p['enabled'] and not s.get('live_visit') and now>=max(s.get('live_backoff_until',0),s.get('live_next_visit',0) or 0):
-            if quota.count(s.db,c,now,'live_visits')<p['visits_daily'] and s.used(str(c['bot_uid']),'live',now,c)<p['daily_limit']:options.append('live')
+            if quota.count(s.db,c,now,'live_visits')<p['visits_daily'] and live.used_today(c,now)<p['daily_limit']:options.append('live')
         if c.get('account_settings_enabled'):
             last_change=accounts.db.execute('SELECT max(created) FROM account_changes').fetchone()[0] or 0
             remaining['settings']=c.get('account_period_limit',3)-quota.count(accounts.db,c,now,'account_changes')

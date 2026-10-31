@@ -195,8 +195,8 @@ class UnifiedCorePlugin(MaiBotPlugin):
         try:return {'success':True,'content':await self.service.media.import_public(url,session)}
         except Exception as exc:return {'success':False,'error':str(exc)[:100] if isinstance(exc,ValueError) else type(exc).__name__}
 
-    @Tool("qq_send_image", platforms="qq", description="把当前群最近的图片或已导入的公开配图发到当前群。按兴趣心情使用，非AI生图，不跨群取图。必须通过内容/隐私审查，有success回执才可说发出。",
-          parameters={"image_id":{"type":"string","description":"上下文或public_image_import返回的image_id；留空取当前群最近图片。"}})
+    @Tool("qq_send_image", platforms="qq", description="把当前会话最近的图片或已导入的公开配图发回当前会话，支持授权群与主人私聊。长期收藏图片改用gallery_send。非AI生图，不跨会话取临时图片；有success回执才可说发出。",
+          parameters={"image_id":{"type":"string","description":"上下文或public_image_import返回的临时image_id；留空取当前会话最近图片。"}})
     async def send_image(self,image_id="",**kwargs):
         session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
         try:
@@ -204,7 +204,7 @@ class UnifiedCorePlugin(MaiBotPlugin):
             return {'success':result.get('status')=='success','content':result}
         except Exception as exc:return {'success':False,'error':str(exc)[:100] if isinstance(exc,ValueError) else type(exc).__name__}
 
-    @Tool("gallery_save", platforms="qq", description="按自己的喜好长期收藏当前群图片或已导入公开图；100张/100MB上限。写具体收藏理由，满额可选择替换旧收藏，默认不播报回执。",
+    @Tool("gallery_save", platforms="qq", description="按自己的喜好把当前会话图片收进QQ账号共用的长期图库；两个授权群和主人私聊可共用收藏，未收藏的临时图仍隔离。100张/100MB上限，写具体收藏理由，满额可选择替换旧收藏，默认不播报回执。",
           parameters={"image_id":{"type":"string","required":True},"reason":{"type":"string","required":True},"tags":{"type":"array","items":{"type":"string"}},"score":{"type":"number"},"replace_id":{"type":"string"}})
     async def gallery_save(self,image_id="",reason="",tags=None,score=75,replace_id="",**kwargs):
         session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
@@ -212,19 +212,21 @@ class UnifiedCorePlugin(MaiBotPlugin):
         try:return {'success':True,'internal_only':True,'content':await self.service.gallery.save(image_id,session,reason,tags or [],score,replace_id)}
         except Exception as exc:return {'success':False,'internal_only':True,'error':str(exc)[:160] if isinstance(exc,ValueError) else type(exc).__name__}
 
-    @Tool("gallery_search", platforms="qq", description="按语义查找个人收藏图片，返回最多5张描述、标签及图片ID；不自动发送。",
+    @Tool("gallery_search", platforms="qq", description="按语义查找当前QQ账号共用的长期收藏图片，两个授权群与主人私聊使用同一图库。返回最多5张描述、标签和图片ID；不自动发送。",
           parameters={"query":{"type":"string","required":True}})
     async def gallery_search(self,query="",**kwargs):
         session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
         try:return {'success':True,'content':await self.service.gallery.search(query,session)}
         except ValueError as exc:return {'success':False,'error':str(exc)}
 
-    @Tool("gallery_send", platforms="qq", description="发送gallery_search返回的收藏图片到当前群。遵守原有发图额度和范围；只发图片，操作回执默认不发送。",
+    @Tool("gallery_send", platforms="qq", description="把gallery_search找到的账号收藏图片发到当前授权群或主人私聊，收藏不受原来源群限制。遵守原有发图额度；只发图片，有success回执才可说发出。",
           parameters={"image_id":{"type":"string","required":True}})
     async def gallery_send(self,image_id="",**kwargs):
         session=str(kwargs.get('stream_id') or kwargs.get('session_id') or '')
         self.service.mark_silent_operation(session)
-        try:return {'success':True,'content':await self.service.gallery.send(image_id,session),'internal_only':True}
+        try:
+            result=await self.service.gallery.send(image_id,session)
+            return {'success':result.get('status')=='success','content':result,'internal_only':True}
         except Exception as exc:return {'success':False,'internal_only':True,'error':str(exc)[:160] if isinstance(exc,ValueError) else type(exc).__name__}
 
     @Tool("gallery_remove", platforms="qq", description="按变化的喜好取消一张个人图片收藏，必须说明理由；不删除聊天记忆或原表情包。",

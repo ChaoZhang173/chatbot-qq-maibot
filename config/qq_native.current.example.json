@@ -1,0 +1,16 @@
+{
+  "plugin": {
+    "enabled": true,
+    "config_version": "2.7.1"
+  },
+  "client": {
+    "client_type": "napcat",
+    "server": "127.0.0.1",
+    "port": 3001,
+    "token": "",
+    "connection_id": ""
+  },
+  "chat_abilities": {
+    "enable_private_chat_tool": false
+  }
+}

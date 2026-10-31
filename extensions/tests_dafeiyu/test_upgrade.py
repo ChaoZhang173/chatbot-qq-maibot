@@ -47,12 +47,12 @@ class UpgradeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.gallery.get(ident,'a')[0]['use_count'],1)
         self.assertEqual(self.s.ctx.send.text.call_count,0)
 
-    async def test_private_group_scope_and_public_source_scope(self):
+    async def test_account_gallery_shares_only_with_authorized_sessions(self):
         local=(await self.save())['image_id']
-        with self.assertRaises(ValueError):self.s.gallery.get(local,'b')
-        self.assertEqual((await self.s.gallery.search('蓝色','b'))['images'],[])
+        self.assertEqual(self.s.gallery.get(local,'b')[0]['scope'],'account:qq:bot')
+        self.assertEqual((await self.s.gallery.search('蓝色','b'))['images'][0]['image_id'],local)
         pub=(await self.save(self.add('red',origin='public_web')))['image_id']
-        self.assertEqual(self.s.gallery.get(pub,'b')[0]['scope'],'public')
+        self.assertEqual(self.s.gallery.get(pub,'b')[0]['scope'],'account:qq:bot')
         with self.assertRaises(ValueError):await self.s.gallery.search('蓝色','private:unknown')
 
     async def test_count_and_byte_limits_replacement_preserves_failed_old_item(self):

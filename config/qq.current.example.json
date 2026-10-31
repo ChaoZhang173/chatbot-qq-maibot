@@ -1,6 +1,6 @@
 {
   "plugin": {
-    "enabled": true,
+    "enabled": false,
     "config_version": "0.4.1"
   },
   "qq_official": {

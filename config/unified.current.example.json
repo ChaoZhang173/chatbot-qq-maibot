@@ -89,5 +89,19 @@
   "paid_tasks_bridge_enabled": true,
   "daily_diary": {
     "enabled": true
-  }
+  },
+  "bili_activity_boost": {
+    "engagement_limits": {
+      "like": 20,
+      "favorite": 10,
+      "follow": 20,
+      "coin": 4
+    }
+  },
+  "bili_live_media_enabled": true,
+  "qq_native": {
+    "enabled": true,
+    "proactive_enabled": true
+  },
+  "qq_channel_enabled": true
 }

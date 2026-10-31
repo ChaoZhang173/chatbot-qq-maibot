@@ -73,5 +73,13 @@
     "游戏",
     "动漫",
     "美食"
-  ]
+  ],
+  "live_media": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "sample_seconds": 12,
+    "daily_samples": 120,
+    "night_samples": 30,
+    "max_age_seconds": 60
+  }
 }

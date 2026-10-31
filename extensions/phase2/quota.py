@@ -39,8 +39,9 @@ def effective(c, ts):
         if c.get("engagement"):
             c["engagement"]["limits"] = {k: scale(v) for k, v in c["engagement"]["limits"].items()}
         if c.get("live_chat"):
-            for k in ("daily_limit", "room_daily_limit", "visits_daily"):
-                c["live_chat"][k] = scale(c["live_chat"][k])
+            # Live message allowances now span the whole calendar day. Only
+            # spontaneous visit frequency retains the separate night budget.
+            c["live_chat"]["visits_daily"] = scale(c["live_chat"]["visits_daily"])
     return c
 
 def validate_reset(c):

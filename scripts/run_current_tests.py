@@ -7,10 +7,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 env = dict(os.environ)
 env['PYTHONDONTWRITEBYTECODE'] = '1'
-env['PYTHONPATH'] = os.pathsep.join([str(ROOT / 'extensions'), str(ROOT / 'extensions/paidtasks'), env.get('PYTHONPATH', '')])
+env['PYTHONPATH'] = os.pathsep.join([str(ROOT / 'extensions'), str(ROOT / 'extensions/paidtasks'), str(ROOT / 'extensions/qq_channel'), str(ROOT / 'extensions/tests_dafeiyu'), env.get('PYTHONPATH', '')])
 suites = [('tests', 'test_*.py'), ('extensions/tests_dafeiyu', 'test_*.py'),
           ('extensions/tests_phase2', 'test_api.py'), ('extensions/tests_phase2', 'test_runtime.py'),
-          ('extensions/tests_phase2', 'test_reply_interest.py'), ('extensions/paidtasks/tests', 'test_*.py')]
+          ('extensions/tests_phase2', 'test_reply_interest.py'), ('extensions/tests_current', 'test_*.py'), ('extensions/paidtasks/tests', 'test_*.py')]
 for directory, pattern in suites:
     print(f'Running {directory}/{pattern}', flush=True)
     subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', directory, '-p', pattern],

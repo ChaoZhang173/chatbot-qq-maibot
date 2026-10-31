@@ -457,16 +457,27 @@ class Engine:
             self.s.put("service_started", self.now())
             bridge = Bridge(self)
             commands=CommandExecutor(self)
+            from .live import policy as live_policy
             live=self.live_chat();next_live=0
             next_tick = 0
             while True:
                 try:
+                    if not bridge_only:
+                        # Read-only verification has no effect on send status,
+                        # quotas or retries, including when the account is paused.
+                        try:
+                            from .visibility import VisibilityChecker
+                            if not hasattr(self, '_visibility_checker'):
+                                self._visibility_checker = VisibilityChecker(self.api, self.s, self.outbox, self.now)
+                            self._visibility_checker.tick()
+                        except Exception:
+                            self.s.put('visibility_last_error', {'at': self.now(), 'type': 'checker_unavailable'})
                     commands.process_one()
                     if not bridge_only and time.monotonic()>=next_live:
                         live_result=live.tick();self.s.put('last_live',{'at':self.now(),'result':live_result})
                         if live_result.get('status') not in ('waiting','no_new_chat','disabled','message_gap'):
                             print(json.dumps({'event':'live','at':self.now(),'result':live_result},ensure_ascii=False),flush=True)
-                        next_live=time.monotonic()+15
+                        next_live=time.monotonic()+live_policy(self.config())['poll_seconds']
                     bridge.process_one()
                     self.sync()
                     if bridge_only or time.monotonic() < next_tick:

@@ -27,6 +27,13 @@
       "price_in": 0.0,
       "price_out": 0.0,
       "extra_params": {}
+    },
+    {
+      "name": "live-sensevoice",
+      "model_identifier": "FunAudioLLM/SenseVoiceSmall",
+      "api_provider": "phase25-siliconflow-embedding",
+      "model_type": "llm",
+      "visual": false
     }
   ],
   "model_task_config": {
@@ -113,11 +120,13 @@
       "hard_timeout": 90.0
     },
     "voice": {
-      "model_list": [],
+      "model_list": [
+        "live-sensevoice"
+      ],
       "max_tokens": 2048,
       "temperature": 0.7,
       "selection_strategy": "balance",
-      "hard_timeout": 90.0
+      "hard_timeout": 30.0
     },
     "embedding": {
       "model_list": [

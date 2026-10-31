@@ -96,6 +96,8 @@ def load_config(path, now=None):
     engagement_policy(c)
     from .live import policy as live_policy
     live_policy(c)
+    from .live_media import policy as live_media_policy
+    live_media_policy(c)
     from .boost import effective
     at = time.time() if now is None else now
     return quota.effective(effective(c, at), at)

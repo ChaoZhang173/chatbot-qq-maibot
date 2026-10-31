@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SECRET_FIELDS = re.compile(r'^(api_?key|app_secret|password|passwd|access_token|refresh_token|client_secret|secret_key|private_key|public_key|authorization|cookie|sessdata|bili_jct)$', re.I)
+SECRET_FIELDS = re.compile(r'^(api_?key|app_secret|password|passwd|token|access_token|refresh_token|client_secret|secret_key|private_key|public_key|authorization|cookie|sessdata|bili_jct)$', re.I)
 RULES = {
     'private-key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----'),
     'public-key-or-certificate': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA |TRUSTED )?(?:PUBLIC KEY|CERTIFICATE)-----|-{4} BEGIN SSH2 PUBLIC KEY -{4}|\b(?:ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-\S+)\s+[A-Za-z0-9+/]{40,}={0,3}'),
@@ -19,6 +19,15 @@ RULES = {
 FORBIDDEN_NAMES = {'webui.json', 'bot_config.toml', 'model_config.toml', 'adapter_policy.toml', '.env'}
 FORBIDDEN_DIRS = {'data', 'logs', 'backups', 'screenshots', 'secrets', 'runtime', 'plugins', 'private', '.ssh', 'gallery'}
 
+# These four source modules are named runtime by the upstream adapter; this is
+# not an exemption for runtime state, arbitrary files, or other safety rules.
+SOURCE_RUNTIME_FILES = {
+    'extensions/maibot_qq_native_adapter/runtime/__init__.py',
+    'extensions/maibot_qq_native_adapter/runtime/builder.py',
+    'extensions/maibot_qq_native_adapter/runtime/bundle.py',
+    'extensions/maibot_qq_native_adapter/runtime/router.py',
+}
+
 # Exact, deliberately invalid URL fixtures used to exercise credential rejection.
 # This is not a blanket exemption for tests or for credentials in URLs.
 SYNTHETIC_URLS = {
@@ -29,7 +38,10 @@ SYNTHETIC_URLS = {
 
 def scan_file(path, relative, text=None):
     failures = []
-    if path.name in FORBIDDEN_NAMES or FORBIDDEN_DIRS.intersection(relative.parts):
+    forbidden = FORBIDDEN_DIRS.intersection(relative.parts)
+    if relative.as_posix() in SOURCE_RUNTIME_FILES:
+        forbidden -= {'runtime'}
+    if path.name in FORBIDDEN_NAMES or forbidden:
         failures.append('live-file-or-data')
     if path.suffix.lower() in {'.key', '.pub', '.pem', '.crt', '.cer', '.p12', '.pfx', '.db', '.sqlite', '.sqlite3', '.log', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.zip', '.gz', '.tar', '.whl'} or path.name.startswith(('._', '.env', 'id_rsa', 'id_ed25519')):
         failures.append('private-or-binary-artifact')

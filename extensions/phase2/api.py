@@ -532,7 +532,12 @@ class Bili:
             }
             d = self.request("/web_im/v1/web_im/send_msg", data=data, vc=True)
             return {"id": str(d.get("msg_key") or ""), "url": ""}
-        data = {"oid": target.oid, "type": target.type, "message": str(text), "csrf": csrf, **comment_fields(text)}
+        # Match the normal web comment contract observed in the website. These
+        # are static source fields, not invented device or challenge tokens.
+        data = {"oid": target.oid, "type": target.type, "message": str(text), "csrf": csrf,
+                "plat": 1, "gaia_source": "main_web",
+                "statistics": json.dumps({"appId": 100, "platform": 5}, separators=(',', ':')),
+                "at_name_to_mid": "{}", **comment_fields(text)}
         if kind == "reply":
             data.update(root=root, parent=parent)
         d = self.request("/x/v2/reply/add", data=data)
@@ -542,7 +547,13 @@ class Bili:
             or (d.get("reply") or {}).get("rpid")
             or ""
         )
-        return {"id": id, "url": target.url + (f"#reply{id}" if id else "")}
+        result = {"id": id, "url": target.url + (f"#reply{id}" if id else "")}
+        reply_state = (d.get('reply') or {}).get('state')
+        if type(reply_state) is int:
+            result['platform_reply_state'] = reply_state
+        if d.get('success_toast'):
+            result['platform_receipt_message'] = platform_message(d['success_toast'])
+        return result
 
     def reconcile(self, kind, target, text, root="", since=0):
         uid = str(self.nav.get("mid", ""))

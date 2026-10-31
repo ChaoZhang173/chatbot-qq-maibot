@@ -45,7 +45,20 @@ class CommandQueue:
     def enabled(self):return self.s.policy.get('qq_bili_commands_enabled') is True
 
     def owner(self,session,actor):
-        return bool(actor) and self.s.policy.get('qq_owner_bindings',{}).get(session)==actor
+        bindings=self.s.policy.get('qq_owner_bindings',{})
+        if actor and bindings.get(session)==actor:return True
+        access=getattr(self.s,'private_access',None)
+        if not actor or not access or session not in access.sessions():return False
+        row=self.db.execute('SELECT * FROM qq_private_bindings WHERE session=? AND private_id=?',(session,actor)).fetchone()
+        return bool(row and bindings.get(row['group_session'])==row['group_actor'])
+
+    def allowed_session(self,session,actor=None):
+        if session in self.s.policy.get('qq_group_sessions',{}).values():return True
+        access=getattr(self.s,'private_access',None)
+        if not access or session not in access.sessions():return False
+        row=self.db.execute('SELECT * FROM qq_private_bindings WHERE session=?',(session,)).fetchone()
+        return bool(row and (actor is None or actor==row['private_id']) and
+                    self.owner(row['group_session'],row['group_actor']))
 
     def recent_links(self,session):
         saved=self.s.state.get('qq_bili_links:'+session,{})
@@ -53,7 +66,8 @@ class CommandQueue:
 
     def capture_links(self,message):
         m,info,user,session=self.s.qq_fields(message)
-        if (session not in self.s.policy.get('qq_group_sessions',{}).values() or m.get('scope')=='private'
+        if (not self.allowed_session(session,str(user.get('user_id') or ''))
+                or (m.get('scope')=='private' and session in self.s.policy.get('qq_group_sessions',{}).values())
                 or m.get('is_notify') or str(user.get('user_id'))==str(self.s.policy.get('qq_bot_account'))):return
         refs=targets(raw_text(m),strict=False)
         if refs:self.s.state.put('qq_bili_links:'+session,{'at':self.s.qq_time(m),'targets':refs[:6]})
@@ -69,8 +83,9 @@ class CommandQueue:
         m,info,user,session=self.s.qq_fields(message)
         actor=str(user.get('user_id') or '')
         # No nicknames, quoted/forwarded content, self-reported QQ numbers, or tool fields grant authority.
-        if (session not in self.s.policy.get('qq_group_sessions',{}).values() or m.get('scope')=='private'
-                or not self.owner(session,actor) or m.get('is_notify')):return None
+        if (not self.allowed_session(session,actor) or m.get('is_notify') or
+                (m.get('scope')=='private' and session in self.s.policy.get('qq_group_sessions',{}).values()) or
+                not (self.owner(session,actor) or session not in self.s.policy.get('qq_group_sessions',{}).values())):return None
         text=raw_text(m)
         # Only normalize an exact bot addressee after the platform owner check.
         # A typed @name is sometimes delivered as plain text, not an at segment.
@@ -125,8 +140,8 @@ class CommandQueue:
         return {'request_id':key,'status':'failed' if error else 'pending','reason':error}
 
     def discretionary(self,session,text,image_id="",settings_spec=None):
-        if not self.enabled() or session not in self.s.policy.get('qq_group_sessions',{}).values():
-            raise ValueError('当前群未开启B站操作')
+        if not self.enabled() or not self.allowed_session(session):
+            raise ValueError('当前会话未开启B站操作')
         spec=validate(settings_spec) if settings_spec else parse(text,self.recent_links(session))
         if image_id:
             self.s.media.get(image_id,session);spec["images"]=[image_id]
@@ -155,6 +170,8 @@ class CommandQueue:
         row=self.db.execute("SELECT id FROM qq_bili_commands WHERE status IN ('pending','executing') ORDER BY forced DESC,created LIMIT 1").fetchone()
         if not row:return {'job':None}
         job=self.get(row['id'])
+        if job['session']!='autonomy:bilibili' and not self.allowed_session(job['session'],job['actor']):
+            self.finish(job['id'],{'status':'failed','reason':'会话授权已变更'});return {'job':None}
         if job['forced'] and not self.owner(job['session'],job['actor']):
             self.finish(job['id'],{'status':'failed','reason':'主人绑定已变更'});return {'job':None}
         if time.time()-job['created']>600 and job['status']=='pending':

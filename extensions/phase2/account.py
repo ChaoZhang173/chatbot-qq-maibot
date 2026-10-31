@@ -21,8 +21,17 @@ class AccountSettings:
             return {'sign':p.get('sign',''),'notice':n if isinstance(n,str) else ''}
         if section=='space':
             data=api.request('/ajax/settings/getSettings',params={'mid':uid},space=True)
+            # The legacy endpoint can return status=true,data=[] for an existing
+            # account. Empty data is not proof that its privacy settings are open.
+            if not isinstance(data,dict) or not isinstance(data.get('privacy'),dict):
+                data=api.request('/x/space/setting/app',params={'mid':uid})
+            if not isinstance(data,dict) or not isinstance(data.get('privacy'),dict) or not data['privacy']:
+                raise Denied('space_settings_unavailable')
             privacy=data.get('privacy') or {}
-            return {**{k:v for k,v in privacy.items() if k in SPACE_FIELDS},'index_order':[int(r['id']) for r in data.get('index_order',[])]}
+            result={k:v for k,v in privacy.items() if k in SPACE_FIELDS}
+            if isinstance(data.get('index_order'),list) and data['index_order']:
+                result['index_order']=[int(r['id']) for r in data['index_order']]
+            return result
         if section=='messages':
             data=api.request('/link_setting/v1/link_setting/get',params={'mobi_app':'web','msg_notify':1,'show_unfollowed_msg':1},vc=True)
             return {k:v for k,v in data.items() if k in MESSAGE_FIELDS}

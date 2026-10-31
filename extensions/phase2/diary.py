@@ -24,6 +24,7 @@ def reserved(store,config,now,kind):
     key=action_key(config,now)
     if store.db.execute('SELECT 1 FROM actions WHERE id=?',(key,)).fetchone():return 0
     state=store.get('daily_diary:'+day(now),{})
+    if state.get('status')=='skipped':return 0
     if state.get('attempts',0)>=2:return 0
     hour,minute=map(int,p['time'].split(':'))
     due=datetime.fromtimestamp(now,TZ).replace(hour=hour,minute=minute,second=0,microsecond=0).timestamp()
@@ -43,6 +44,7 @@ def tick(engine):
     due=datetime.fromtimestamp(now,TZ).replace(hour=h,minute=m,second=0,microsecond=0).timestamp()
     if now<due:return {'status':'waiting','date':date,'due_at':due}
     state=s.get(marker,{})
+    if state.get('status')=='skipped':return {'status':'skipped','date':date,'reason':state.get('reason','no_worthwhile_topic')}
     if state.get('attempts',0)>=2:return {'status':'generation_limit','date':date}
     if now<state.get('retry_at',0):return {'status':'retry_wait','date':date}
     # These checks precede model use; no deadline can bypass a pause or quota.
@@ -57,6 +59,10 @@ def tick(engine):
         candidates=registry(s,c,e.api,now)
         prepared=e.bounded_core({'op':'diary_episodes','date':date})
         draft=e.bounded_core({'op':'diary_draft','date':date,'mention_candidates':candidates,'episode_id':prepared.get('episode_id','')})
+        if draft.get('status')=='skipped':
+            state.update(status='skipped',reason='no_worthwhile_topic')
+            s.put(marker,state)
+            return {'status':'skipped','date':date,'reason':'no_worthwhile_topic'}
         review=e.bounded_core({'op':'diary_review','date':date,'draft_id':draft['draft_id']})
         if review.get('approved') is not True:raise Denied('diary_review_rejected')
         if day(e.now())!=date or e.config()!=c:raise Denied('diary_date_or_policy_changed')

@@ -3,6 +3,7 @@ import asyncio,hashlib,json,math,os,re,time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from .compact_context import persona,dumps
+from .qq_proactive import window as activity_window
 
 MAX_IMAGES=100
 MAX_BYTES=100_000_000
@@ -23,7 +24,12 @@ class Gallery:
           CREATE TABLE IF NOT EXISTS gallery_candidates(image_id TEXT PRIMARY KEY,created REAL,status TEXT,reason TEXT);''')
 
     def authorize(self,session):
-        if session not in self.s.policy.get('qq_group_sessions',{}).values():raise ValueError('图库仅在已授权群可用')
+        self.s.media.authorize(session)
+
+    def account_scope(self):
+        account=str(self.s.policy.get('qq_bot_account') or '')
+        if not account:raise ValueError('图库账号未配置')
+        return 'account:qq:'+account
 
     def audit(self,kind,ident,payload):
         self.db.execute('INSERT INTO gallery_events(created,kind,image_id,payload) VALUES(?,?,?,?)',(time.time(),kind,ident,dumps(payload)))
@@ -34,15 +40,15 @@ class Gallery:
 
     def get(self,ident,session):
         self.authorize(session)
-        r=self.db.execute("SELECT * FROM gallery_images WHERE id=? AND scope IN (?, 'public')",(ident,session)).fetchone()
-        if not r:raise ValueError('收藏图片不存在或不属于当前群可用范围')
+        r=self.db.execute("SELECT * FROM gallery_images WHERE id=? AND scope IN (?, ?, 'public')",(ident,self.account_scope(),session)).fetchone()
+        if not r:raise ValueError('收藏图片不存在或不属于当前账号可用范围')
         raw=(self.root/(r['id']+'.jpg')).read_bytes()
         if len(raw)!=r['bytes'] or hashlib.sha256(raw).hexdigest()!=r['sha256']:raise ValueError('收藏图片校验失败')
         return dict(r),raw
 
     def visible(self,session):
         self.authorize(session)
-        return [dict(r) for r in self.db.execute("SELECT * FROM gallery_images WHERE scope IN (?, 'public') ORDER BY preference DESC,updated DESC",(session,))]
+        return [dict(r) for r in self.db.execute("SELECT * FROM gallery_images WHERE scope IN (?, ?, 'public') ORDER BY preference DESC,updated DESC",(self.account_scope(),session))]
 
     @staticmethod
     def brief(row):
@@ -76,11 +82,13 @@ class Gallery:
         row,raw=self.s.media.get(image_id,session)
         review=await self.s.media.review(image_id,session,public=row['origin']=='public_web')
         if not review['allowed']:raise ValueError('图片未通过内容与隐私审查')
-        scope='public' if row['origin']=='public_web' else session
+        scope=self.account_scope()
         ident=hashlib.sha256((scope+':'+row['sha256']).encode()).hexdigest()
         async with self.lock:
-            old=self.db.execute('SELECT * FROM gallery_images WHERE id=?',(ident,)).fetchone()
+            # Legacy IDs stay stable during the account-library migration.
+            old=self.db.execute('SELECT * FROM gallery_images WHERE scope=? AND sha256=?',(scope,row['sha256'])).fetchone()
             if old:
+                ident=old['id']
                 self.db.execute('UPDATE gallery_images SET reason=?,tags=?,preference=?,updated=? WHERE id=?',(reason,dumps(tags),score,time.time(),ident))
                 self.audit('preference_updated',ident,{'reason':reason,'score':score})
                 return {'status':'already_saved','image_id':ident,**self.stats()}
@@ -147,9 +155,9 @@ class Gallery:
         return {**result,'internal_only':True}
 
     async def curate(self):
-        now=time.time();key='gallery_curate:'+day()
+        now=time.time();period,night=activity_window(now);key='gallery_curate_period:'+period
         if self.s.busy.locked() or now-self.s.state.get('gallery_curated_at',0)<1800:return {'status':'waiting'}
-        if self.s.state.get(key,0)>=4 or self.s.state.get('gallery_changes:'+day(),0)>=MAX_DAILY_CHANGES:return {'status':'daily_limit'}
+        if self.s.state.get(key,0)>=(2 if night else 8) or self.s.state.get('gallery_changes:'+day(),0)>=MAX_DAILY_CHANGES:return {'status':'daily_limit'}
         rows=self.db.execute('SELECT m.* FROM scoped_media m LEFT JOIN gallery_candidates c ON c.image_id=m.id WHERE c.image_id IS NULL AND m.created>? ORDER BY m.created LIMIT 12',(now-3600,)).fetchall()
         rows=[dict(r) for r in rows if r['session'] in self.s.policy.get('qq_group_sessions',{}).values()]
         if not rows:return {'status':'no_new_images'}
@@ -178,7 +186,8 @@ class Gallery:
             result={'status':'declined'}
             if d['keep']:
                 if d.get('replace_id') and d['replace_id'] not in {r['id'] for r in existing}:raise ValueError('invalid_gallery_replacement')
-                result=await self.save(d['image_id'],session,reason,d.get('tags',[]),d.get('score'),d.get('replace_id',''))
+                if self.s.state.get('gallery_changes:'+day(),0)>=MAX_DAILY_CHANGES:result={'status':'daily_limit'}
+                else:result=await self.save(d['image_id'],session,reason,d.get('tags',[]),d.get('score'),d.get('replace_id',''))
             self.db.execute('UPDATE gallery_candidates SET status=?,reason=? WHERE image_id=?',(result['status'],reason,d['image_id']))
             self.audit('interest_decision',d['image_id'],{'keep':d['keep'],'reason':reason,'score':d.get('score')});out.append({**result,'reason':reason})
         for missing in allowed-seen:

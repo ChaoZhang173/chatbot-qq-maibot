@@ -1,0 +1,32 @@
+{
+  "manifest_version": 2,
+  "id": "local.bilibili-bridge",
+  "version": "0.1.0",
+  "name": "B站公开活动与动态桥接",
+  "description": "QQ读取B站公开活动，并将原创动态提交到唯一B站写入进程。",
+  "author": {
+    "name": "Local deployment",
+    "url": "https://github.com/chenluQwQ/bilibili-ai-bot"
+  },
+  "license": "MIT",
+  "plugin_type": "general",
+  "host_application": {
+    "min_version": "1.3.7",
+    "max_version": "1.3.99"
+  },
+  "sdk": {
+    "min_version": "2.8.2",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [],
+  "capabilities": [],
+  "urls": {
+    "repository": "https://github.com/chenluQwQ/bilibili-ai-bot"
+  },
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  }
+}

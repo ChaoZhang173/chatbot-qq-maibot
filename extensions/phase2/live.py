@@ -4,21 +4,23 @@ from datetime import datetime
 from . import quota
 from .core import Denied,PlatformError,UnknownDelivery,TZ,active,day,machine_id
 from .content_rules import blocked,public_text,is_plain_live_text
+from .live_media import read_observation, fresh as fresh_media, policy as media_policy
 
-DEFAULT={'enabled':False,'daily_limit':100,'room_daily_limit':40,'stay_min':600,'stay_max':3600,
-         'ordinary_probability':0.85,'message_gap':60,'poll_seconds':15,'visits_daily':4,
+DEFAULT={'enabled':False,'daily_limit':100,'room_daily_limit':50,'stay_min':600,'stay_max':3600,
+         'ordinary_probability':0.85,'message_gap':5,'poll_seconds':5,'visits_daily':4,
          'interval_min':3600,'interval_max':10800}
 STOP=re.compile(r'别刷屏|不要刷屏|停止(?:发言|聊天|回复)|别(?:再)?(?:回复|说话)|机器人.*(?:走开|出去)|stop\s+(?:chat|reply)',re.I)
 LOW_INFORMATION=re.compile(r'福袋|抽奖|抽我|求中奖|中个奖|红包口令|老板大气|老板糊涂')
+TOPIC_INTERVAL=300
 
 def policy(config):
     raw=config.get('live_chat',DEFAULT)
     if not isinstance(raw,dict) or set(raw)!=set(DEFAULT) or type(raw['enabled']) is not bool:raise ValueError('invalid_live_policy')
     for key in set(DEFAULT)-{'enabled','ordinary_probability'}:
         if type(raw[key]) is not int:raise ValueError('invalid_live_policy')
-    if not (0<=raw['daily_limit']<=100 and 0<=raw['room_daily_limit']<=40 and
+    if not (0<=raw['daily_limit']<=100 and 0<=raw['room_daily_limit']<=50 and
         600<=raw['stay_min']<=raw['stay_max']<=3600 and raw['ordinary_probability']==0.85 and
-        raw['message_gap']>=60 and 15<=raw['poll_seconds']<=60 and 1<=raw['visits_daily']<=4 and
+        raw['message_gap']>=5 and 5<=raw['poll_seconds']<=60 and 1<=raw['visits_daily']<=4 and
         3600<=raw['interval_min']<=raw['interval_max']<=10800):raise ValueError('live_policy_exceeds_authorization')
     return dict(raw)
 
@@ -89,13 +91,20 @@ class LiveChat:
         self.s.db.executescript('''CREATE TABLE IF NOT EXISTS live_seen(id TEXT PRIMARY KEY,room TEXT,created REAL);
           CREATE TABLE IF NOT EXISTS live_visits(id TEXT PRIMARY KEY,room TEXT,day TEXT,started REAL,ends REAL,status TEXT);''')
 
+    def used_today(self,c,now,room_id=None):
+        # Live sends share one Beijing calendar-day allowance across day/night,
+        # restarts and quota-reset markers. Failed/uncertain attempts stay counted.
+        where="uid=? AND kind='live'";args=(str(c['bot_uid']),)
+        if room_id is not None:where+=' AND target=?';args+=('live:'+str(room_id),)
+        return quota.daily_count(self.s.db,{**c,'quota_reset_at':0},now,where,args)
+
     def guard(self,c,p):
         if not getattr(self.s,'_lock_held',False):raise Denied('live_single_writer_required')
         if not p['enabled'] or not p['daily_limit'] or not p['room_daily_limit']:raise Denied('live_disabled')
         if c['paused'] or (self.s.root/'PAUSE').exists() or self.s.get('pause_reason'):raise Denied('paused')
         if not active(c,self.e.now()):raise Denied('outside_active_hours')
         if str(c['bot_uid'])!=str(self.s.get('bound_uid')) or c['writer_machine']!=machine_id() or not self.s.get('baseline_at'):raise Denied('live_identity_required')
-        if self.s.used(str(c['bot_uid']),'live',self.e.now(),c)>=p['daily_limit']:raise Denied('live_daily_limit')
+        if self.used_today(c,self.e.now())>=p['daily_limit']:raise Denied('live_daily_limit')
 
     def close(self,reason):
         visit=self.s.get('live_visit')
@@ -104,6 +113,7 @@ class LiveChat:
         return {'status':'left','reason':reason}
 
     def start(self,c,p):
+        self.guard(c,p)
         now=self.e.now()
         if quota.count(self.s.db,c,now,'live_visits')>=p['visits_daily']:return {'status':'visits_daily_limit'}
         end=quota.activity_end(c,now,p['stay_max'])
@@ -113,7 +123,7 @@ class LiveChat:
         parent=self.rng.choice([2,3,6,9]);candidates=self.api.candidates(parent)
         candidates=[r for r in candidates if r['uid']!=str(c['bot_uid']) and not blocked(json.dumps(r,ensure_ascii=False))
             and self.s.get('live_avoid:'+r['room_id'],0)<now and
-            quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+r['room_id'],))<p['room_daily_limit']]
+            self.used_today(c,now,r['room_id'])<p['room_daily_limit']]
         self.rng.shuffle(candidates);candidates=candidates[:6]
         if not candidates:return {'status':'no_eligible_room'}
         answer=self.e.bounded_core({'op':'live_plan','mode':'select','material':{'rooms':candidates}})
@@ -127,7 +137,9 @@ class LiveChat:
         return self.join(c,p,room)
 
     def join(self,c,p,room,stay_seconds=None):
+        self.guard(c,p)
         now=self.e.now()
+        if self.used_today(c,now,room['room_id'])>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
         end=quota.activity_end(c,now,p['stay_max'])
         if end-now<p['stay_min']:raise Denied('outside_active_hours')
         duration=min(stay_seconds or self.rng.randint(p['stay_min'],p['stay_max']),int(end-now))
@@ -152,13 +164,13 @@ class LiveChat:
         if visit and not forced:raise Denied('live_current_visit')
         if visit and now-visit['started']<p['stay_min']:raise Denied('live_current_visit_minimum')
         if quota.count(self.s.db,c,now,'live_visits')>=p['visits_daily']:raise Denied('live_visits_daily_limit')
-        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
+        if self.used_today(c,now,rid)>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
         if blocked(json.dumps(room,ensure_ascii=False)) or self.e.screen_content(json.dumps(room,ensure_ascii=False)).get('allowed') is not True:raise Denied('fixed_topic_restriction')
         if self.e.config()!=c:raise Denied('live_policy_changed')
         self.guard(c,p)
         if visit:self.close('owner_switched_room')
         # A deliberate visit replaces only the random idle schedule. It does not
-        # reset quotas, shorten a rejection cooldown, or resend any old message.
+        # reset quotas, shorten a read-error cooldown, or resend any old message.
         return self.join(c,p,room,stay_seconds)
 
     def poll(self,c,p,visit):
@@ -173,6 +185,9 @@ class LiveChat:
             if (fresh['title'],fresh['area'],fresh['description'])!=(room['title'],room['area'],room.get('description','')):
                 if self.e.screen_content(json.dumps(fresh,ensure_ascii=False)).get('allowed') is not True:return self.close('fixed_topic_restriction')
             room=fresh;visit.update(room=room,checked=now);self.s.put('live_visit',visit)
+        observation=read_observation(c,visit,now)
+        if observation and observation['sample_id']==self.s.get('live_observation_consumed'):
+            observation=None
         rows=[]
         for row in self.api.messages(rid):
             key=token(rid,row)
@@ -180,19 +195,34 @@ class LiveChat:
             self.s.db.execute('INSERT INTO live_seen VALUES(?,?,?)',(key,rid,now))
             if row['uid']==str(c['bot_uid']) or not max(visit['started'],now-90)<=row['time']<=now+5:continue
             rows.append(row)
-        if not rows:return {'status':'no_new_chat'}
+        had_messages=bool(rows)
         material='\n'.join(r['text'] for r in rows)
         if STOP.search(material):self.s.put('live_avoid:'+rid,now+86400);return self.close('stop_requested')
-        if blocked(material):self.s.put('live_avoid:'+rid,now+86400);return self.close('fixed_topic_restriction')
-        # Giveaway slogans are not a conversation invitation; do not complain or redirect the room.
+        media_text=json.dumps(observation,ensure_ascii=False) if observation else ''
+        if blocked(material+'\n'+media_text):self.s.put('live_avoid:'+rid,now+86400);return self.close('fixed_topic_restriction')
+        # Slogans do not require a reply. An independent topic may still be due.
         rows=[row for row in rows if not LOW_INFORMATION.search(row['text'])]
-        if not rows:return {'status':'no_substantive_chat'}
-        material='\n'.join(r['text'] for r in rows)
-        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:return self.close('room_daily_limit')
+        self_initiated=not rows and not observation
         last=self.s.db.execute("SELECT max(created) FROM actions WHERE kind='live'").fetchone()[0]
+        if self_initiated:
+            considered=self.s.get('live_topic_considered',{})
+            at=considered.get('at',0) if considered.get('visit_id')==visit['id'] else 0
+            if now-max(visit['started'],at,last or 0)<TOPIC_INTERVAL:
+                return {'status':'no_substantive_chat' if had_messages else 'no_new_chat'}
+        material='\n'.join(r['text'] for r in rows)
+        if self.used_today(c,now,rid)>=p['room_daily_limit']:return self.close('room_daily_limit')
         if last and now-last<p['message_gap']:return {'status':'message_gap'}
         history=[r[0] for r in self.s.db.execute("SELECT text FROM actions WHERE kind='live' AND target=? AND status='success' ORDER BY created DESC LIMIT 5",('live:'+rid,))]
-        answer=self.e.bounded_core({'op':'live_plan','mode':'reply','material':{'room_id':rid,'room':room,'new_messages':[r['text'][:200] for r in rows[-10:]],'own_recent_messages':history}})
+        live_material={'room_id':rid,'visit_id':visit['id'],'room':room,'new_messages':[r['text'][:200] for r in rows[-10:]],'own_recent_messages':history,'self_initiated':self_initiated}
+        if self_initiated:
+            # Reserve the consideration before calling the model so restarts
+            # or a decision to stay quiet cannot cause a rapid retry loop.
+            self.s.put('live_topic_considered',{'visit_id':visit['id'],'at':now})
+        if observation:
+            self.s.put('live_observation_consumed',observation['sample_id'])
+            live_material['observation']={**observation,'status':'observed'}
+        answer=self.e.bounded_core({'op':'live_plan','mode':'reply','material':live_material})
+        if observation:answer['_observation']={**observation,'status':'observed'}
         d=answer.get('decision',{})
         if d.get('allowed') is not True:self.s.put('live_avoid:'+rid,now+86400);return self.close('topic_or_privacy_restriction')
         if d.get('willing') is not True or not d.get('text'):return {'status':'not_replying'}
@@ -201,7 +231,9 @@ class LiveChat:
         text=public_text(d['text'])
         if len(text)>20 or text in history:return {'status':'invalid_or_repeated_text'}
         if not is_plain_live_text(text):return {'status':'invalid_live_text'}
-        key='live:'+str(c['bot_uid'])+':'+token(rid,rows[-1])
+        trigger=(token(rid,rows[-1]) if rows else observation['sample_id'] if observation else
+                 hashlib.sha256(('self-topic:'+visit['id']+':'+str(now)).encode()).hexdigest())
+        key='live:'+str(c['bot_uid'])+':'+trigger
         return self.send(c,p,visit,key,text,answer)
 
     def send(self,c,p,visit,key,text,answer):
@@ -213,6 +245,8 @@ class LiveChat:
         if not current or current['id']!=visit['id'] or now>=current['ends']:raise Denied('live_visit_expired')
         if self.e.config()!=c:raise Denied('live_policy_changed')
         self.guard(c,p)
+        if answer.get('_observation') and not fresh_media(answer['_observation'],rid,current['id'],now,media_policy(c)['max_age_seconds']):
+            return {'status':'stale_live_observation'}
         # A room can enable silence while a model reply is being generated.
         # Recheck using metadata only; never send a probe to test a restriction.
         fresh=self.api.room(rid)
@@ -222,7 +256,9 @@ class LiveChat:
         if now>=current['ends']:return self.close('visit_complete')
         if self.e.config()!=c:raise Denied('live_policy_changed')
         self.guard(c,p)
-        if quota.count(self.s.db,c,now,where="kind='live' AND target=?",args=('live:'+rid,))>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
+        if answer.get('_observation') and not fresh_media(answer['_observation'],rid,current['id'],now,media_policy(c)['max_age_seconds']):
+            return {'status':'stale_live_observation'}
+        if self.used_today(c,now,rid)>=p['room_daily_limit']:raise Denied('live_room_daily_limit')
         last=self.s.db.execute("SELECT max(created) FROM actions WHERE kind='live'").fetchone()[0]
         if last and now-last<p['message_gap']:raise Denied('live_message_gap')
         if self.s.db.execute('SELECT 1 FROM actions WHERE id=?',(key,)).fetchone():return {'status':'already_attempted'}
@@ -235,7 +271,9 @@ class LiveChat:
         try:self.api.send(rid,text)
         except PlatformError as exc:
             self.s.update(key,status='failed',error='platform_'+str(exc.code));self.s.put('platform_error:'+key,getattr(self.e.api,'last_platform_error',None))
-            self.s.put('live_backoff_until',now+3600);self.s.put('live_avoid:'+rid,now+86400);self.close('platform_rejected')
+            # This attempt is finished, but a rejected danmaku does not end the
+            # visit or add a cooldown. Fresh chat still uses the normal gap and
+            # quotas, and the durable action record prevents replaying this send.
             result={'status':'failed','reason':'platform_'+str(exc.code)}
             detail=getattr(self.e.api,'last_platform_error',None) or {}
             if detail.get('classification') in ('room_keyword_block','site_keyword_block','unknown_live_rejection'):
@@ -244,6 +282,8 @@ class LiveChat:
             self.s.update(key,status='unknown',error='no_reliable_receipt');self.close('delivery_unknown');result={'status':'unknown','reason':'no_retry'}
         else:
             self.s.update(key,status='success',remote_id='live-receipt:'+key);result={'status':'success','room_id':rid,'text':text,'visibility':'not_independently_checked'}
+        if self.used_today(c,self.e.now())>=p['daily_limit']:
+            self.close('live_daily_limit');result['visit_ended']='live_daily_limit'
         self.e.sync();return result
 
     def tick(self):

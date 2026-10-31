@@ -62,13 +62,23 @@ class ConfigSafetyTests(unittest.TestCase):
         check = load('check_public_files')
         import json
         p = Path('config/example.json')
-        for field in ('api_key', 'password', 'public_key', 'sessdata', 'bili_jct'):
+        for field in ('api_key', 'password', 'token', 'public_key', 'sessdata', 'bili_jct'):
             findings = check.scan_file(p, p, json.dumps({field: 'synthetic-test-value'}))
             self.assertIn('nonempty-credential-field', findings)
             self.assertNotIn('synthetic-test-value', str(findings))
         key = 'ssh-' + 'ed25519 ' + 'A' * 60
         self.assertIn('public-key-or-certificate', check.scan_file(Path('a.txt'), Path('a.txt'), key))
         self.assertIn('private-or-binary-artifact', check.scan_file(Path('a.pub'), Path('a.pub'), ''))
+
+    def test_adapter_runtime_source_exemption_is_narrow(self):
+        check = load('check_public_files')
+        p = Path('extensions/maibot_qq_native_adapter/runtime/bundle.py')
+        self.assertEqual(check.scan_file(p, p, '# source module\n'), [])
+        for name in ('state.json', 'state.sqlite', 'unknown.py'):
+            q = p.parent / name
+            self.assertIn('live-file-or-data', check.scan_file(q, q, '{}'))
+        secret = 'sk-' + 'a' * 30
+        self.assertIn('api-token', check.scan_file(p, p, secret))
 
     def test_current_bilibili_example_is_valid_and_paused(self):
         import sys

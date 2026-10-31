@@ -106,20 +106,27 @@ def _visibility_annotation(action):
         if not isinstance(evidence, dict):
             raise ValueError("invalid_visibility_evidence")
         safe = {}
-        for key in ("authenticated_exact_match", "guest_exact_match"):
+        for key in ("authenticated_exact_match", "guest_exact_match", "guest_list_exact_match"):
             if key in evidence:
                 if type(evidence[key]) is not bool:
                     raise ValueError("invalid_visibility_evidence")
                 safe[key] = evidence[key]
-        for key in ("authenticated_detail_code", "guest_detail_code", "authenticated_state"):
+        for key in ("authenticated_detail_code", "guest_detail_code", "authenticated_state", "guest_list_code"):
             if key in evidence:
                 if evidence[key] is not None and (type(evidence[key]) is not int or abs(evidence[key]) > 10**9):
                     raise ValueError("invalid_visibility_evidence")
                 safe[key] = evidence[key]
         if "method" in evidence:
-            if evidence["method"] != "bounded_comment_api":
+            if evidence["method"] not in ("bounded_comment_api", "bounded_dynamic_api"):
                 raise ValueError("invalid_visibility_method")
             safe["method"] = evidence["method"]
+        if any(field in evidence for field in ('observer_list_seen', 'observer_source', 'observer_recorded_at')):
+            stamp = evidence.get('observer_recorded_at')
+            if (type(evidence.get('observer_list_seen')) is not bool or evidence.get('observer_source') != 'user_report'
+                    or type(stamp) not in (int, float) or not math.isfinite(stamp) or stamp <= 0
+                    or stamp > result.get('visibility_checked_at', 0)):
+                raise ValueError('invalid_observer_evidence')
+            safe.update({field:evidence[field] for field in ('observer_list_seen', 'observer_source', 'observer_recorded_at')})
         result["visibility_evidence"] = safe
     if result.get("public_visibility") == "guest_api_visible":
         if result.get("visibility_evidence", {}).get("guest_exact_match") is not True:
@@ -470,10 +477,10 @@ class State:
             if source_platform == "qq":
                 return (self._safe_qq_summary(s)
                         and self._in_allowlist("public_qq_sessions", source_platform, source_conversation))
-            return source_platform == "bilibili" and scope == "public"
-        if (source_platform == "bilibili" and target_platform == "qq" and scope == "public"
+            return source_platform in {"bilibili", "qq_channel"} and scope == "public"
+        if (source_platform in {"bilibili", "qq_channel"} and target_platform == "qq" and scope == "public"
                 and s.get("origin") in {"bot_self", "self", "bot", "platform_content", "external_user"}):
-            account = self._bot_account("bilibili")
+            account = self._bot_account(source_platform)
             return bool(account) and str(s.get("bot_account_id", "")) == account
         if source_platform == target_platform == "qq":
             groups = self.policy.get("shared_groups", [])

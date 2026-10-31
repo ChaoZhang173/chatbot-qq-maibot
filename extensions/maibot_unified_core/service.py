@@ -18,7 +18,7 @@ PUBLIC_TOPICS={'AI','游戏','美食'}
 QQ_IDENTITY_QUEUE_LIMIT=128
 QQ_IDENTITY_QUEUE_TTL=3600
 QQ_IDENTITY_MAX_ATTEMPTS=20
-VISIBILITY_NOTE='B站评论或动态的成功回执只表示平台接口接收，不等于其他用户可见。public_visibility只有guest_api_visible代表游客接口已查到；account_only_or_not_publicly_verified表示仅登录账号查到且公开可见性未确认，不能断言屏蔽原因。'
+VISIBILITY_NOTE='B站评论或动态必须区分平台接收、直达可查、普通列表展示。成功回执只表示平台接收；guest_api_visible只证明游客直达接口精确查到，不能说评论区展示正常。visibility_evidence.guest_list_exact_match为true才确认在已检查的游客列表中出现；false或缺失均表示该列表展示未确认，不能单凭缺席断言屏蔽。observer_source=user_report时，observer_list_seen记录用户另一个账号在普通列表能否看到，这是用户反馈、observer_recorded_at是记录时间，不能冒充自动核验；直达可查不能推翻用户报告的列表不可见。account_only_or_not_publicly_verified表示登录账号查到而游客直达未查到；不能推断具体风控原因。'
 
 def ident(*parts):
     return hashlib.sha256(json.dumps(parts,ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest()
@@ -45,6 +45,7 @@ class UnifiedService:
         self.persona_checked_at=0.0
         self.commands=None;self.command_worker=None;self.media=None;self.private_access=None;self.paid=None
         self.gallery=None;self.context_cache={}
+        self.qq_proactive=None;self.qq_proactive_worker=None
 
     def reload_policy(self):
         self.policy=json.loads((self.root/'policy.json').read_text())
@@ -69,6 +70,8 @@ class UnifiedService:
         from .gallery import Gallery
         self.gallery=Gallery(self)
         self.commands=CommandQueue(self)
+        from .qq_proactive import ProactiveQQ
+        self.qq_proactive=ProactiveQQ(self)
         from .paid_bridge import PaidBridge
         self.paid=PaidBridge(self)
         try:
@@ -80,6 +83,7 @@ class UnifiedService:
         os.chmod(path,0o660)
         self.worker=asyncio.create_task(self.background_loop())
         self.command_worker=asyncio.create_task(self.command_loop())
+        self.qq_proactive_worker=asyncio.create_task(self.qq_proactive.loop())
         self.state.put('service_started',time.time())
         self.ctx.logger.info('统一核心已启动：本机套接字、Host记忆、共享人格和持久活动')
 
@@ -119,6 +123,10 @@ class UnifiedService:
             return {'status':'synced','version':current['version']}
 
     async def stop(self):
+        if self.qq_proactive_worker:
+            self.qq_proactive_worker.cancel()
+            try:await self.qq_proactive_worker
+            except asyncio.CancelledError:pass
         if self.command_worker:
             self.command_worker.cancel()
             try:await self.command_worker
@@ -145,7 +153,7 @@ class UnifiedService:
             if len(raw)>MAX_PACKET or not raw.endswith(b'\n'):raise ValueError('packet_size')
             request=json.loads(raw);op=request.get('op')
             admin=uid in (0,os.getuid())
-            if not admin and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review'):raise PermissionError('admin_only')
+            if not admin and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review'):raise PermissionError('admin_only')
             result=await asyncio.wait_for(self.dispatch(request,admin=admin),100)
             response={'ok':True,**result}
         except Exception as exc:
@@ -168,6 +176,18 @@ class UnifiedService:
 
     async def dispatch(self,r,admin=False):
         op=r.get('op')
+        if op=='qq_channel_plan':
+            if not admin:raise PermissionError('admin_only')
+            from .qq_channel import plan
+            return await plan(self,r)
+        if op=='qq_native':
+            if not admin:raise PermissionError('admin_only')
+            if r.get('method')=='provision':return await self.qq_proactive.provision()
+            if r.get('method')=='connection_test':return await self.qq_proactive.connection_test()
+            if r.get('method')=='status':
+                self.reload_policy()
+                return {'destinations':self.qq_proactive.destinations(),'attempts':[dict(x) for x in self.state.db.execute('SELECT session,created,status FROM qq_proactive_attempts ORDER BY created DESC LIMIT 10')]}
+            raise ValueError('unknown_native_operation')
         if isinstance(op,str) and op.startswith('paid_'):
             if not admin:raise PermissionError('admin_only')
             return await self.paid.dispatch(r)
@@ -201,6 +221,9 @@ class UnifiedService:
         if op=='live_plan':
             from .live import plan
             return await plan(self,r)
+        if op=='live_observe':
+            from .live_observe import observe
+            return await observe(self,r)
         if op=='command_asset':return self.commands.asset(r['id'],r['image_id'])
         if op=='command_interpret':
             from .command_planner import interpret
@@ -307,6 +330,7 @@ class UnifiedService:
         self.record_qq_reply_eligibility(m)
         actor=str(user.get('user_id') or m.get('user_id') or '')
         content=self.qq_text(m)
+        if self.qq_proactive and actor!=str(self.policy['qq_bot_account']):self.qq_proactive.observe(session,actor,content)
         mid=str(m.get('message_id') or '')
         if not mid or not actor:return
         self_origin=actor==str(self.policy['qq_bot_account'])
@@ -629,7 +653,7 @@ class UnifiedService:
         safe_activities=[]
         for a in activities:
             status=a.get('status') or a.get('canonical_status')
-            safe_activities.append({k:a.get(k) for k in ('action_id','platform','kind','status','canonical_status','content','text','remote_id','url','created','created_at','occurred_at','result_stage','public_visibility') if a.get(k) is not None})
+            safe_activities.append({k:a.get(k) for k in ('action_id','platform','kind','status','canonical_status','content','text','remote_id','url','created','created_at','occurred_at','result_stage','public_visibility','visibility_evidence','visibility_checked_at') if a.get(k) is not None})
             if status in ('unknown','failed','executing','planned','queued'):safe_activities[-1]['notice']='不是已完成的活动，不能声称成功'
             source_ids.append(a.get('action_id',''))
         reads=self.recent_reads(context={'platform':platform,'conversation_id':conversation_id,'purpose':purpose},limit=4)
@@ -673,7 +697,7 @@ class UnifiedService:
         self.state.audit_context('qq_final_context','qq',session_id,sources,result['persona'].get('version'),model_task='replyer')
         rule=(character.CONTEXT_RULE if character.expanded(self.policy) else '')+'\n'+content_rules.RULE+'\n'+receipts.RULE
         rule+=self.qq_reply_policy_context(session_id)
-        if self.commands and session_id in self.policy.get('qq_group_sessions',{}).values():rule+=self.commands.context(session_id)
+        if self.commands and self.commands.allowed_session(session_id):rule+=self.commands.context(session_id)
         if self.private_access and session_id in self.private_access.sessions():rule+='\n本私聊只使用允许的私聊记忆，不向群聊公开。'
         if self.media:rule+=self.media.context(session_id)
         rule+='\n需要更多记忆时用unified_memory；查经历用unified_activity。图片可用gallery_save/search/send/remove管理100张个人图库，收藏理由须来自自己的喜好。'

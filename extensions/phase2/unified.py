@@ -226,18 +226,29 @@ class Outbox:
             raise Denied("invalid_visibility_state")
         if type(checked_at) not in (int, float) or not 0 < checked_at <= self.now() + 300:
             raise Denied("invalid_visibility_time")
-        clean = {"method": "bounded_comment_api"}
-        for field in ("authenticated_exact_match", "guest_exact_match"):
+        method = evidence.get('method', 'bounded_comment_api')
+        if method not in ('bounded_comment_api', 'bounded_dynamic_api'):
+            raise Denied('invalid_visibility_method')
+        clean = {"method": method}
+        for field in ("authenticated_exact_match", "guest_exact_match", "guest_list_exact_match"):
+            if field == 'guest_list_exact_match' and field not in evidence:
+                continue
             if type(evidence.get(field)) is not bool:
                 raise Denied("invalid_visibility_evidence")
             clean[field] = evidence[field]
-        for field in ("authenticated_detail_code", "guest_detail_code", "authenticated_state"):
+        for field in ("authenticated_detail_code", "guest_detail_code", "authenticated_state", "guest_list_code"):
             value = evidence.get(field)
             if value is not None and type(value) is not int:
                 raise Denied("invalid_visibility_evidence")
             clean[field] = value
         if state == "guest_api_visible" and not clean["guest_exact_match"]:
             raise Denied("unverified_guest_visibility")
+        if any(field in evidence for field in ('observer_list_seen', 'observer_source', 'observer_recorded_at')):
+            stamp = evidence.get('observer_recorded_at')
+            if (type(evidence.get('observer_list_seen')) is not bool or evidence.get('observer_source') != 'user_report'
+                    or type(stamp) not in (int, float) or not math.isfinite(stamp) or not 0 < stamp <= checked_at):
+                raise Denied('invalid_observer_evidence')
+            clean.update({field:evidence[field] for field in ('observer_list_seen', 'observer_source', 'observer_recorded_at')})
         payload = {"public_visibility": state, "visibility_checked_at": checked_at, "visibility_evidence": clean}
         self.s.db.execute("BEGIN IMMEDIATE")
         try:

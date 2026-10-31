@@ -40,7 +40,8 @@ class NightQuotaTests(unittest.TestCase):
   self.c['live_chat']={**DEFAULT,'enabled':True};self.path.write_text(json.dumps(self.c));c=load_config(self.path,now)
   self.assertEqual(c['limits'],dict(dynamic=5,proactive=3,reply=10,dm=5));self.assertEqual(c['model_daily'],20)
   self.assertEqual(c['engagement']['limits'],dict(like=5,favorite=3,follow=5,coin=1))
-  self.assertEqual([c['live_chat'][k] for k in ('daily_limit','room_daily_limit','visits_daily')],[25,10,1])
+  # Current live message quotas span the calendar day; only visits scale at night.
+  self.assertEqual([c['live_chat'][k] for k in ('daily_limit','room_daily_limit','visits_daily')],[100,50,1])
   self.assertEqual(c['autonomy_period_limit'],8);self.assertEqual(c['account_period_limit'],1)
   self.assertEqual(load_config(self.path,end)['limits']['dynamic'],3)
  def test_usage_visits_and_settings_share_whole_night(self):

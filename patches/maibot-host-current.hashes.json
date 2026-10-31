@@ -1,4 +1,8 @@
 {
+  "src/common/utils/utils_message.py": {
+    "upstream_sha256": "9db8ff2b7f133f5cb4aaa94c5c450055aa060020fa01b4bac33129d8616b21c3",
+    "deployed_sha256": "24e069f425549a66e54f87250c13c7b98d0ebef3f120e625cec2db1c7a12a911"
+  },
   "src/maisaka/chat_loop_service.py": {
     "upstream_sha256": "bdc1f8955f4b629931a0285eca1bc10cd1cf1a773821452fe583ec172ca0f2d7",
     "deployed_sha256": "fcd0dee6d51eb74d08b90d72c4ce84e739d99335bfbfef21154be51ef431dbc9"
@@ -6,5 +10,9 @@
   "src/plugin_runtime/capabilities/registry.py": {
     "upstream_sha256": "c3c4d708997fe01028b5f262e14bc0065b161b8781d6464116ea075b510f081e",
     "deployed_sha256": "fc14636251bdb1e3b79a714c68c1be9440f17b7cb79261b74fc066b7ab94bdab"
+  },
+  "src/plugin_runtime/capabilities/unified_memory.py": {
+    "upstream_sha256": null,
+    "deployed_sha256": "4b6249cc4fb5f509f6d84d4a6675442e37fd215d731f601fd7b41b019bad64a5"
   }
 }
