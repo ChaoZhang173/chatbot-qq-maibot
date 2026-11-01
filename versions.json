@@ -1,12 +1,15 @@
 {
-  "snapshot_date": "2026-10-31",
+  "snapshot_date": "2026-11-01",
   "maibot": "1.3.14",
   "qq_adapter": "0.4.2",
   "qq_config_version": "0.4.1",
   "tomlkit": "0.15.2",
   "python": "3.12",
   "adapter_commit": "7a0c321bfc65e157abdb5e8a10913181387b6081",
-  "source_manifest": "docs/source-manifest-20261031.json",
+  "source_manifest": "docs/source-manifest-20261101.json",
   "qq_native_adapter": "1.1.9",
-  "qq_native_config_version": "2.7.1"
+  "qq_native_config_version": "2.7.1",
+  "persona_reference_version": 13,
+  "xiaohongshu_mcp_commit": "7797fd375aba02dcd33afe143f6bee13e5870859",
+  "xiaohongshu_mcp_patch": "patches/xiaohongshu-mcp-reply.patch"
 }

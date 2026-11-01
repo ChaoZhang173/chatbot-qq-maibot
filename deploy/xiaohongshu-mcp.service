@@ -1,0 +1,44 @@
+# Template for the external xiaohongshu-mcp runtime (pinned release + its bundled browser). NOT enabled by default.
+# The coordinator owns installation; ExecStart and flags follow the actual installed release.
+# Real-start findings baked in: the browser spawns many threads, so TasksMax must be generous (128 crashed the Go
+# runtime with errno=11). Do not issue concurrent doctor/status/login requests while a login QR is still waiting:
+# every request starts its own browser. Watch the cookies file update first, then check the identity once.
+
+[Unit]
+Description=xiaohongshu-mcp runtime (loopback only, serialized browser use)
+After=network.target
+ConditionPathExists=/srv/maibot-xiaohongshu/ENABLE
+
+[Service]
+Type=simple
+User=xhsbot
+Group=xhsbot
+# AUTH_TOKEN (shared with the executor's XHS_MCP_AUTH_TOKEN) and COOKIES_PATH live here; mode 0600.
+EnvironmentFile=/srv/maibot-xiaohongshu/credentials/xhs.env
+WorkingDirectory=/srv/maibot-xiaohongshu/home
+# Bind to 127.0.0.1:18060 only; never expose this port.
+ExecStart=/srv/maibot-xiaohongshu/bin/xiaohongshu-mcp
+Restart=on-failure
+RestartSec=30
+UMask=0077
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+ReadWritePaths=/srv/maibot-xiaohongshu/state /srv/maibot-xiaohongshu/cache /srv/maibot-xiaohongshu/home /srv/maibot-xiaohongshu/credentials
+ReadOnlyPaths=/srv/maibot-xiaohongshu/publish-media /srv/maibot-xiaohongshu/bin
+
+MemoryMax=600M
+MemorySwapMax=512M
+TasksMax=512
+CPUQuota=100%
+
+[Install]
+# Intentionally empty: do not enable at boot until acceptance is complete.

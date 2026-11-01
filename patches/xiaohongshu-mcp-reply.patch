@@ -1,0 +1,121 @@
+--- a/xiaohongshu/comment_feed.go
++++ b/xiaohongshu/comment_feed.go
+@@ -111,7 +111,19 @@
+ }
+ 
+ // ReplyToComment 回复指定评论
+-func (f *CommentFeedAction) ReplyToComment(ctx context.Context, feedID, xsecToken, commentID, userID, content string) error {
++func (f *CommentFeedAction) ReplyToComment(ctx context.Context, feedID, xsecToken, commentID, userID, content string) (resultErr error) {
++	stage, submitted := "navigate", false
++	defer func() {
++		if recovered := recover(); recovered != nil {
++			resultErr = fmt.Errorf("%v", recovered)
++		}
++		if resultErr != nil && !submitted {
++			resultErr = fmt.Errorf("XHS_NOT_SENT:%s: %w", stage, resultErr)
++		}
++		if resultErr != nil {
++			logrus.Warnf("reply failed at stage=%s submit_attempted=%t", stage, submitted)
++		}
++	}()
+ 	// 增加超时时间，因为需要滚动查找评论
+ 	// 注意：不使用 Context(ctx)，避免继承外部 context 的超时
+ 	page := f.page.Timeout(5 * time.Minute)
+@@ -131,55 +143,57 @@
+ 	time.Sleep(2 * time.Second)
+ 
+ 	// 使用 Go 实现的查找逻辑
++	stage = "find_comment"
+ 	commentEl, err := findCommentElement(ctx, page, commentID, userID)
+ 	if err != nil {
+ 		return fmt.Errorf("无法找到评论: %w", err)
+ 	}
+ 
+-	// 滚动到评论位置
+-	logrus.Info("滚动到评论位置...")
+-	commentEl.MustScrollIntoView()
+-	humanize.Delay(ctx, humanize.BetweenScroll)
+-
++	stage = "reply_button"
+ 	logrus.Info("准备点击回复按钮")
+-
+-	// 查找并点击回复按钮
+-	replyBtn, err := commentEl.Element(".right .interactions .reply")
++	// A lookup's short timeout must not escape with its element. Center the actual
++	// reply control, not the tall comment container whose footer can remain hidden
++	// behind the sticky editor. Bound each UI operation instead of waiting five minutes.
++	commentEl = commentEl.Context(page.GetContext())
++	replyBtn, err := commentEl.Timeout(8 * time.Second).Element(".right .interactions .reply")
+ 	if err != nil {
+ 		return fmt.Errorf("无法找到回复按钮: %w", err)
+ 	}
+-
+-	if err := humanize.Click(replyBtn); err != nil {
++	if err := clickReplyControl(replyBtn.Context(page.GetContext()).Timeout(10 * time.Second)); err != nil {
+ 		return fmt.Errorf("点击回复按钮失败: %w", err)
+ 	}
+-
+ 	humanize.Delay(ctx, humanize.AfterClick)
++	stage = "reply_input"
+ 
+ 	// 查找回复输入框
+-	inputEl, err := page.Element("div.input-box div.content-edit p.content-input")
++	inputEl, err := page.Timeout(10 * time.Second).Element("div.input-box div.content-edit p.content-input")
+ 	if err != nil {
+ 		return fmt.Errorf("无法找到回复输入框: %w", err)
+ 	}
+ 
+ 	// 输入内容
+-	if err := humanize.Type(ctx, inputEl, content); err != nil {
++	stage = "type_reply"
++	if err := humanize.Type(ctx, inputEl.Context(page.GetContext()).Timeout(30*time.Second), content); err != nil {
+ 		return fmt.Errorf("输入回复内容失败: %w", err)
+ 	}
+ 
+ 	humanize.Delay(ctx, humanize.AfterType)
+ 
+ 	// 查找并点击提交按钮
+-	submitBtn, err := page.Element("div.bottom button.submit")
++	stage = "submit_button"
++	submitBtn, err := page.Timeout(8 * time.Second).Element("div.bottom button.submit")
+ 	if err != nil {
+ 		return fmt.Errorf("无法找到提交按钮: %w", err)
+ 	}
+ 
+-	if err := humanize.Click(submitBtn); err != nil {
++	stage, submitted = "submit", true
++	if err := humanize.Click(submitBtn.Context(page.GetContext()).Timeout(12 * time.Second)); err != nil {
+ 		return fmt.Errorf("点击提交按钮失败: %w", err)
+ 	}
+ 
+ 	humanize.Delay(ctx, humanize.AfterClick)
+ 
++	stage = "readback"
+ 	// 就地校验：回复应在评论区渲染出现，否则判定未成功。
+ 	if !waitCommentRendered(page, content, 4*time.Second) {
+ 		logrus.Warnf("回复提交后未在评论区渲染，判定未成功: feed=%s", feedID)
+@@ -294,3 +308,24 @@
+ 	}
+ 	return nil
+ }
++
++// clickReplyControl uses a real pointer click after checking that the control is
++// visible at its center. It never invokes a hidden DOM click or retries a submit.
++func clickReplyControl(el *rod.Element) error {
++	if _, err := el.Eval(`() => this.scrollIntoView({block:"center", inline:"nearest", behavior:"instant"})`); err != nil {
++		return err
++	}
++	time.Sleep(150 * time.Millisecond)
++	hit, err := el.Eval(`() => {
++        const r=this.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2;
++        const hit=document.elementFromPoint(x,y);
++        return r.width>0 && r.height>0 && getComputedStyle(this).visibility!=="hidden" && (hit===this || this.contains(hit));
++    }`)
++	if err != nil {
++		return err
++	}
++	if !hit.Value.Bool() {
++		return fmt.Errorf("reply_button_obscured")
++	}
++	return humanize.ClickNoWait(el)
++}

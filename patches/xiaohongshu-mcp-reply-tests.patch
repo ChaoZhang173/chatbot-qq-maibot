@@ -1,0 +1,36 @@
+--- /dev/null
++++ b/xiaohongshu/reply_control_integration_test.go
+@@ -0,0 +1,33 @@
++//go:build integration
++
++package xiaohongshu
++
++import (
++    "net/url"
++    "os"
++    "testing"
++    "time"
++
++    "github.com/go-rod/rod"
++    "github.com/go-rod/rod/lib/launcher"
++)
++
++func TestReplyControlNestedScrollAndOverlay(t *testing.T) {
++    bin := os.Getenv("XHS_TEST_BROWSER")
++    if bin == "" { t.Skip("XHS_TEST_BROWSER required; no browser auto-download") }
++    launch := launcher.New().Bin(bin).Headless(true).UserDataDir(t.TempDir())
++    browser := rod.New().ControlURL(launch.MustLaunch()).MustConnect()
++    defer func(){ browser.MustClose(); launch.Cleanup() }()
++    html := `<style>body{margin:0}.scroller{height:450px;overflow:auto;width:500px;position:relative}.spacer{height:1800px}.comment{height:300px;background:#eee;position:relative}.reply{position:absolute;bottom:0;left:10px;width:90px;height:30px}.sticky{position:fixed;top:370px;left:0;height:80px;width:500px;background:#ddd}</style><div class="scroller"><div class="spacer"></div><div class="comment"><button class="reply" onclick="window.clicks++">回复</button></div><div class="spacer"></div></div><div class="sticky"></div><script>window.clicks=0</script>`
++    page := browser.MustPage("data:text/html," + url.PathEscape(html))
++    defer page.MustClose()
++    page.MustElement(".comment").MustScrollIntoView()
++    el := page.MustElement(".reply")
++    if err := clickReplyControl(el.Timeout(5*time.Second)); err != nil { t.Fatal(err) }
++    if page.MustEval(`() => window.clicks`).Int() != 1 { t.Fatal("reply control was not clicked exactly once") }
++    page.MustEval(`() => {const x=document.createElement('div'); x.style='position:fixed;inset:0;z-index:999;background:red'; document.body.append(x)}`)
++    start := time.Now()
++    if err := clickReplyControl(el.Timeout(5*time.Second)); err == nil { t.Fatal("covered control should fail without clicking") }
++    if time.Since(start)>2*time.Second { t.Fatal("covered control must not wait indefinitely") }
++    if page.MustEval(`() => window.clicks`).Int() != 1 { t.Fatal("covered control was clicked") }
++}

@@ -1,0 +1,57 @@
+# Dafeiyu Xiaohongshu executor. Template only: NOT enabled by default.
+# Install as /etc/systemd/system/dafeiyu-xiaohongshu.service after review, then `systemctl daemon-reload`.
+# It refuses to start until the operator creates the ENABLE marker (a second, explicit switch):
+#   touch /srv/maibot-xiaohongshu/ENABLE
+# The program is installed in its own directory (app/) and runs on the system python3; it needs no private runtime.
+# Do not run a manual CLI write command while the service runs: the single-instance lock refuses the second writer.
+
+[Unit]
+Description=Dafeiyu Xiaohongshu executor (loopback MCP service + unified core socket)
+After=network.target
+ConditionPathExists=/srv/maibot-xiaohongshu/ENABLE
+
+[Service]
+Type=simple
+User=xhsbot
+Group=xhsbot
+# Holds XHS_MCP_AUTH_TOKEN (same value as the MCP service's AUTH_TOKEN); mode 0600, owned by xhsbot.
+EnvironmentFile=/srv/maibot-xiaohongshu/credentials/xhs.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/srv/maibot-xiaohongshu/app
+WorkingDirectory=/srv/maibot-xiaohongshu/home
+ExecStart=/usr/bin/python3 -m xiaohongshu --config /srv/maibot-xiaohongshu/config.json run
+Restart=on-failure
+RestartSec=30
+UMask=0077
+
+# Least privilege
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+# Only its own state is writable; the publishable media directory and program files are read-only.
+ReadWritePaths=/srv/maibot-xiaohongshu/state
+ReadOnlyPaths=/srv/maibot-xiaohongshu/publish-media /srv/maibot-xiaohongshu/app
+# If text_card is enabled the executor writes new cards into the publishable directory:
+# then move /srv/maibot-xiaohongshu/publish-media from ReadOnlyPaths to ReadWritePaths.
+# Loopback MCP service and the unified core Unix socket only; no other network.
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+
+# Resource limits (2 GB host; the browser runs in the separate MCP service)
+MemoryMax=256M
+TasksMax=64
+CPUQuota=50%
+
+[Install]
+# Intentionally empty: do not enable at boot until acceptance is complete.

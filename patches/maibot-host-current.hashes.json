@@ -7,12 +7,44 @@
     "upstream_sha256": "bdc1f8955f4b629931a0285eca1bc10cd1cf1a773821452fe583ec172ca0f2d7",
     "deployed_sha256": "fcd0dee6d51eb74d08b90d72c4ce84e739d99335bfbfef21154be51ef431dbc9"
   },
+  "src/maisaka/mode_policy.py": {
+    "upstream_sha256": "a8c0546d37ad48370c50f5ebfa134013c10e0b66235e176be749f72ec32b78fb",
+    "deployed_sha256": "0ffa872876b66b40c8a96d85897b58e5bd773b1e42b7015824d05836e20e8fa9"
+  },
+  "src/maisaka/reasoning_engine.py": {
+    "upstream_sha256": "d79a1db886d725b0a495bbea4d47ba399e94609241c468945778221833e292a1",
+    "deployed_sha256": "c95d69ccfbf23670a7badba0454670d53cf4f7c42bc6147433f23d3d55ede6e3"
+  },
+  "src/maisaka/turn_trigger/idle_backoff.py": {
+    "upstream_sha256": "7b5ce1980f631ca2e56544139fe3324413c067a556e2ee71a28cc7da96cfd0c1",
+    "deployed_sha256": "fb4f9989b7714141096a7732f5f1d3bf30f51ccc53ce14f12fabecb55e19ee0b"
+  },
+  "src/person_info/person_info.py": {
+    "upstream_sha256": "825ae3b4a1a9402ad5cac224851f226c214577ffb970b71392036d817bf8722a",
+    "deployed_sha256": "8b3d73dd4cce7260775d52f1fb8ccb2adf2def27077bb2810ebf2ce21ce40d11"
+  },
   "src/plugin_runtime/capabilities/registry.py": {
     "upstream_sha256": "c3c4d708997fe01028b5f262e14bc0065b161b8781d6464116ea075b510f081e",
     "deployed_sha256": "fc14636251bdb1e3b79a714c68c1be9440f17b7cb79261b74fc066b7ab94bdab"
   },
+  "src/services/memory_flow_service.py": {
+    "upstream_sha256": "8e96d4c588fcecfdf92427c22b87ad81cead84ac1a99daa492968657c8d11a1f",
+    "deployed_sha256": "9379996c02115ae73d828a1201db156d959f9919fd94269c69b84067c82e4d12"
+  },
+  "src/common/token_optimizations.py": {
+    "upstream_sha256": null,
+    "deployed_sha256": "896cfdd31eb847e8865f4095547e207f95e33d234d81a6b409ebf5072e048e13"
+  },
+  "src/maisaka/reply_termination.py": {
+    "upstream_sha256": null,
+    "deployed_sha256": "3830072f9ccecf0b60395847c9dab322fc686d014f3bed8414dede58aaca9aad"
+  },
   "src/plugin_runtime/capabilities/unified_memory.py": {
     "upstream_sha256": null,
     "deployed_sha256": "4b6249cc4fb5f509f6d84d4a6675442e37fd215d731f601fd7b41b019bad64a5"
+  },
+  "src/services/person_fact_dedup.py": {
+    "upstream_sha256": null,
+    "deployed_sha256": "8c0d9318589d49b4e5857c372182f2f332cc237f2985be4a9d6761b5ba37dc6b"
   }
 }

@@ -1,0 +1,18 @@
+{
+  "currency": "CNY",
+  "timezone": "Asia/Shanghai",
+  "calendar": {
+    "known_from": "",
+    "known_to": "",
+    "holidays": [],
+    "makeup_workdays": []
+  },
+  "models": {},
+  "_notes": [
+    "models 故意留空：未填价格的模型一律是未定价（费用为 null），不会被当作免费。",
+    "填写格式：\"模型名\": {\"rules\": [{\"day_type\": \"any\", \"price_in\": 元每百万输入, \"price_out\": 元每百万输出, \"cache_price_in\": 元每百万缓存命中输入}]}，价格必须按供应商当日官方价格核实后填写。",
+    "不在 models 中的模型视为未定价（费用为 null），不会当作免费。",
+    "calendar 的节假日与调休只来自这里；日期不在 known_from..known_to 内时按工作日/非工作日两种口径给出区间。",
+    "峰谷时段示例：{\"day_type\":\"workday\",\"start\":\"08:00\",\"end\":\"20:00\",...}，首条匹配的规则生效，end 早于 start 表示跨午夜。"
+  ]
+}

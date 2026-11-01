@@ -1,0 +1,51 @@
+{
+  "enabled": false,
+  "dry_run": true,
+  "publish_enabled": false,
+  "comment_enabled": false,
+  "reply_enabled": false,
+  "browse_enabled": false,
+  "autonomy_enabled": false,
+  "bound_uid": "",
+  "visibility": "公开可见",
+  "service_url": "http://127.0.0.1:18060",
+  "token_env": "XHS_MCP_AUTH_TOKEN",
+  "token_file": "",
+  "core_socket": "/srv/maibot/unified/core.sock",
+  "state_dir": "/srv/maibot-xiaohongshu/state",
+  "media_dir": "/srv/maibot-xiaohongshu/publish-media",
+  "text_card": {
+    "enabled": false,
+    "font_path": ""
+  },
+  "limits": {
+    "daily_posts": 2,
+    "daily_comments": 4,
+    "daily_replies": 8,
+    "daily_model_calls": 16,
+    "daily_browses": 4,
+    "per_thread_daily": 2,
+    "per_author_daily": 2,
+    "min_gap_post": 3600,
+    "min_gap_comment": 1800,
+    "min_gap_reply": 300,
+    "notification_poll_seconds": 1800,
+    "autonomy_seconds": 21600,
+    "tick_seconds": 30,
+    "max_notifications": 20,
+    "max_comments_read": 30,
+    "active_start_hour": 9,
+    "active_end_hour": 23,
+    "identity_ttl_seconds": 3600,
+    "http_timeout": 120,
+    "write_timeout": 400,
+    "max_response_bytes": 2097152,
+    "max_post_images": 1,
+    "image_reuse_days": 30,
+    "interests": [
+      "游戏",
+      "动漫",
+      "AI"
+    ]
+  }
+}

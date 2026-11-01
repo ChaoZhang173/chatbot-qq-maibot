@@ -1,0 +1,28 @@
+{
+  "_notes": [
+    "Host 侧开关文件；通过环境变量 MAIBOT_TOKEN_OPT_CONFIG 指向它。文件损坏、读取失败或字段非法时全部回退为关闭。",
+    "所有候选开关默认关闭。建议灰度顺序：先只启用 person_fact_dedup（P4），观察 hit/skip 日志和事实更新后，再单独评估其它实验。",
+    "reply_termination 只接受 planner 在 reply 参数中明确给出 final_reply=true，且批次、队列检查全部通过时才会本地结束；未知 mode 继续原流程。",
+    "统一核心（P2/P3）的开关不在此文件，见下面 policy_context_layers_example，写入 policy.json 的 token_optimizations.context_layers。"
+  ],
+  "person_fact_dedup": {
+    "enabled": false,
+    "ttl_seconds": 900,
+    "empty_ttl_seconds": 300,
+    "partial_ttl_seconds": 120,
+    "max_entries": 512
+  },
+  "reply_termination": {
+    "enabled": false,
+    "mode": "explicit"
+  },
+  "policy_context_layers_example": {
+    "enabled": false,
+    "refresh_messages": 20,
+    "max_age_seconds": 1800,
+    "prefix_position": "tail",
+    "tool_catalog": "full",
+    "tool_catalog_position": "tail",
+    "short_description_chars": 40
+  }
+}

@@ -127,6 +127,16 @@ def _visibility_annotation(action):
                     or stamp > result.get('visibility_checked_at', 0)):
                 raise ValueError('invalid_observer_evidence')
             safe.update({field:evidence[field] for field in ('observer_list_seen', 'observer_source', 'observer_recorded_at')})
+        moderation_fields = ('moderation_state', 'moderation_source', 'moderation_recorded_at')
+        if any(field in evidence for field in moderation_fields):
+            stamp = evidence.get('moderation_recorded_at')
+            if (action.get('platform') != 'xiaohongshu' or action.get('kind') not in ('comment', 'reply')
+                    or evidence.get('moderation_source') != 'user_report'
+                    or evidence.get('moderation_state') not in ('pending_review', 'approved', 'rejected')
+                    or type(stamp) not in (int, float) or not math.isfinite(stamp) or stamp <= 0
+                    or stamp > result.get('visibility_checked_at', 0)):
+                raise ValueError('invalid_moderation_evidence')
+            safe.update({field:evidence[field] for field in moderation_fields})
         result["visibility_evidence"] = safe
     if result.get("public_visibility") == "guest_api_visible":
         if result.get("visibility_evidence", {}).get("guest_exact_match") is not True:
@@ -258,6 +268,8 @@ class State:
     def _bot_account(self, platform):
         accounts = self.policy.get("bot_accounts", {})
         value = accounts.get(platform, "") if isinstance(accounts, dict) else ""
+        if platform == "xiaohongshu":
+            return _text(value or self.policy.get("xhs_bot_account", ""), 256)
         if not value:
             value = self.policy.get("bili_bot_uid" if platform == "bilibili" else "qq_bot_account", "")
         return _text(value, 256)
@@ -477,8 +489,8 @@ class State:
             if source_platform == "qq":
                 return (self._safe_qq_summary(s)
                         and self._in_allowlist("public_qq_sessions", source_platform, source_conversation))
-            return source_platform in {"bilibili", "qq_channel"} and scope == "public"
-        if (source_platform in {"bilibili", "qq_channel"} and target_platform == "qq" and scope == "public"
+            return source_platform in {"bilibili", "qq_channel", "xiaohongshu"} and scope == "public"
+        if (source_platform in {"bilibili", "qq_channel", "xiaohongshu"} and target_platform == "qq" and scope == "public"
                 and s.get("origin") in {"bot_self", "self", "bot", "platform_content", "external_user"}):
             account = self._bot_account(source_platform)
             return bool(account) and str(s.get("bot_account_id", "")) == account

@@ -1,5 +1,7 @@
 # 上游来源
 
+- 小红书浏览器运行时：[xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)，固定提交 `7797fd375aba02dcd33afe143f6bee13e5870859`。本仓库提供回复修复补丁和独立测试补丁；上游许可证见 `licenses/Xiaohongshu-MCP-LICENSE`，不包含其二进制或浏览器发行包。
+
 - MaiBot: https://github.com/Mai-with-u/MaiBot
 - QQ 官方适配器: https://github.com/Mai-with-u/MaiBot-QQ-Adapter
 - 适配器基线提交: `7a0c321bfc65e157abdb5e8a10913181387b6081`

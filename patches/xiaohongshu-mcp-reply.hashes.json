@@ -1,0 +1,10 @@
+{
+  "upstream_commit": "7797fd375aba02dcd33afe143f6bee13e5870859",
+  "deployed_linux_amd64_binary_sha256": "59eb913c608f5b90548226cc0eb846855c54fe05932c097da6b07382d4aa02e0",
+  "files": {
+    "xiaohongshu/comment_feed.go": {
+      "upstream_sha256": "62f99d56cda9cba6b8acef4fe8f7a79c34ef60e8ead7ce0af0b484d063a5191b",
+      "patched_sha256": "40529a6f7a8c05da49e5fdad34019b3a2a96e4ee766ff883e6493548b88ad34a"
+    }
+  }
+}

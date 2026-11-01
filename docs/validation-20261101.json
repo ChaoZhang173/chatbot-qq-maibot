@@ -1,0 +1,31 @@
+{
+  "snapshot_date": "2026-11-01",
+  "validation_kind": "offline tests and publication checks; no platform writes",
+  "offline_tests": {
+    "passed": 830,
+    "skipped": 1,
+    "total": 831,
+    "host_token_tests_loaded_from_current_deployed_source": true,
+    "local_http_test": "Passed after allowing a test-only loopback listener."
+  },
+  "patch_checks": {
+    "host_files_verified": 12,
+    "host_patch_applies": true,
+    "mcp_patch_applies": true,
+    "mcp_patched_source_exact": true,
+    "mcp_test_patch_applies": true,
+    "browser_test_rerun": false,
+    "browser_test_note": "This publication verifies patch application and source parity; no Go toolchain is installed locally."
+  },
+  "known_private_values_scan": {
+    "files_scanned": 303,
+    "protected_sources_loaded": 18,
+    "known_value_count": 31,
+    "matched_files": [],
+    "pass": true
+  },
+  "notes": [
+    "Public templates omit temporary activity boosts and keep Xiaohongshu operations and text cards disabled.",
+    "No Go toolchain was available locally; the browser integration test was packaged but not rerun during publication."
+  ]
+}
