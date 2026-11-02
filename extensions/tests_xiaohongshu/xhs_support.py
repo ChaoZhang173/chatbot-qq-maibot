@@ -50,6 +50,7 @@ class FakeService:
         self.status_calls, self.status_override, self.hide_publish = 0, None, False
         self.on_status = None          # called on every login/status request (to simulate a pause mid-flow)
         self.hidden_until_deep = set()  # comment ids only returned by a deep (load_all_comments) detail read
+        self.hidden_subs_until_deep = set()  # NESTED sub-comment ids that a shallow read does not return (inside subComments)
         self.misplace_reply_under = None  # land our reply in another root thread (wrong target)
         self.body_suffix = ''          # extra text the platform shows after the body (e.g. tag display)
         self.force_suffix = None       # if set, replaces the tag display after a publish (longer body than the draft)
@@ -85,6 +86,8 @@ class FakeService:
         if path == '/api/v1/feeds/detail':
             deep = bool(data.get('load_all_comments'))
             visible = [c for c in self.comments if deep or c['id'] not in self.hidden_until_deep]
+            if not deep and self.hidden_subs_until_deep:
+                visible = [{**c, 'subComments': [s for s in c['subComments'] if s['id'] not in self.hidden_subs_until_deep]} for c in visible]
             return ok({'feed_id': data['feed_id'], 'data': {'note': {'noteId': data['feed_id'], 'title': self.note_title, 'desc': self.desc + self.body_suffix,
                        'time': int(self.clock() * 1000), 'user': {'userId': self.note_author, 'nickname': 'author'}},
                        'comments': {'list': visible, 'hasMore': False}}})

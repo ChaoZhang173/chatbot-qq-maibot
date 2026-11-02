@@ -86,10 +86,24 @@ def tick(engine,config,now):
 
 
 def browse(engine,config,autonomous=False):
+    """Real autonomous browse entry. A curiosity opportunity (core-granted search) is reported whatever happens,
+    including errors, and is never retried under a new id."""
+    engine.__dict__['_explore']={'task':None,'reads':[],'attempts':0,'searches':0}
+    try:result=_browse(engine,config,autonomous)
+    except BaseException:
+        if hasattr(engine,'report_exploration'):engine.report_exploration('failed')
+        raise
+    if hasattr(engine,'report_exploration'):engine.report_exploration('done' if engine._explore.get('reads') else 'failed')
+    return result
+
+
+def _browse(engine,config,autonomous=False):
     """Read interesting videos even after the separate comment quota is full.
 
     One shared decision per fresh video, at most two per browsing opportunity.
     Every actual action still passes its original writer/identity/budget guards.
+    With a claimed search opportunity the candidates come from the in-site keyword search (1 search, <= 2 detail
+    attempts INCLUDING failed ones); the comment permit only gates commenting, never the read.
     """
     from .core import Denied, InterestSkip, active as active_hours, day, machine_id
     s=engine.s
@@ -103,7 +117,10 @@ def browse(engine,config,autonomous=False):
             or not s.get('baseline_at')):raise Denied('boost_identity_or_baseline_required')
     engine.sender.identity(config)
     cycle=s.get('browse_cycle',0);s.put('browse_cycle',cycle+1)
-    targets=engine.api.candidates(config,cycle)
+    task=engine.claim_exploration() if hasattr(engine,'claim_exploration') else None
+    state=getattr(engine,'_explore',None) or {'attempts':0,'reads':[]}
+    search_config={**config,'search_keyword':task['query'],'max_candidates':min(2,config['max_candidates'])} if task else config
+    targets=engine.api.candidates(search_config,cycle)
     outcomes=[];decisions=0
     for candidate in targets[:config['max_candidates']]:
         if not candidate or candidate.kind!='video':continue
@@ -115,11 +132,20 @@ def browse(engine,config,autonomous=False):
         if s.get(marker):continue
         # Persist before network/model; failed attempts are not repeatedly retried.
         s.put(marker,{'at':now,'status':'attempted'})
+        if task:
+            if state['attempts']>=2:break
+            state['attempts']+=1          # counted BEFORE the I/O: a failed detail attempt also uses the opportunity
         target=engine.api.video(candidate.oid,with_subtitle=True)
-        if target.kind!='video' or target.key!=candidate.key or str(target.author)==str(config['bot_uid']):continue
+        # An ID-only search hit may carry only the BV id (its key then differs from the hydrated aid key): it is the same
+        # video when the hydrated BV id matches. Everything else keeps the original exact-key rule.
+        same=target.key==candidate.key or (task and candidate.evidence=='search_result_id_only' and str(target.source_id)==str(candidate.source_id))
+        if target.kind!='video' or not same or str(target.author)==str(config['bot_uid']):continue
         key=f"{config['bot_uid']}:proactive:{target.key}"
         event=engine.event('proactive',key,target.text,target)
         event['event_id']+=':boost:'+day(now)+':'+target.evidence
+        if task:
+            event['exploration_task']=task['task_key']   # a turn born from a search result can never start another search
+            state['reads'].append(target.key)
         engine.outbox.event(event)
         allowed=True;reason=''
         try:s.permit(config,'proactive',target,now,key=key)

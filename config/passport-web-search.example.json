@@ -1,0 +1,5 @@
+{
+  "provider": "deepseek",
+  "api_key": "",
+  "timeout_s": 6.0
+}

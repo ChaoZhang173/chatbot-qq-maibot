@@ -25,6 +25,7 @@ KIND_SWITCH = {'post': 'publish_enabled', 'comment': 'comment_enabled', 'reply':
 TEXT_LIMIT = {'comment': 300, 'reply': 300}
 DEFERRED = ('daily_limit', 'min_gap')
 MAX_PER_POLL = 3
+REPORT_LEVEL = {'verified': 2, 'readback_same_thread': 3}   # store.unreported() documents the ordering; anything else is level 1
 
 
 MODEL_COST = {'post': 2, 'intro': 2}   # draft + review
@@ -211,9 +212,17 @@ class Executor:
         request = {'task': task, 'cycle': uuid.uuid4().hex + uuid.uuid4().hex, 'bot_account_id': self.cfg['bound_uid'],
                    'conversation_id': conversation, 'material': material, 'candidates': candidates or {},
                    'budget': budget or {}, 'history': [t[:300] for t in self.store.recent_texts(6)]}
+        if getattr(self, '_opp', ''):
+            request['opportunity'] = self._opp   # ties later plans/events of this autonomy step to ONE selection opportunity
+        exp = getattr(self, '_exp', None)
+        if exp and exp.get('task'):
+            request['exploration_task'] = exp['task']['task_key']   # a turn born from a search result cannot start another search
         return self.core.plan(request)
 
     def _event(self, kind, **fields):
+        exp = getattr(self, '_exp', None)
+        if exp and exp.get('task'):
+            fields.setdefault('exploration_task', exp['task']['task_key'])
         event = {'platform': 'xiaohongshu', 'bot_account_id': self.cfg['bound_uid'], 'event_type': kind,
                  'occurred_at': min(self.now(), fields.pop('occurred_at', self.now())), **fields}
         try:
@@ -223,11 +232,19 @@ class Executor:
 
     # ---- read helpers ----------------------------------------------------------------
     def _detail(self, feed_id, token, deep=False):
-        detail = self.http.feed_detail(feed_id, token, 100, deep=True) if deep else self.http.feed_detail(feed_id, token, self.limits['max_comments_read'])
+        exp = getattr(self, '_exp', None)
+        if exp and exp.get('task'):
+            # Every real detail attempt of a curiosity opportunity is counted BEFORE the I/O (failures included), cap 2.
+            if exp['attempts'] >= 2:
+                raise Skip('exploration_read_cap')
+            exp['attempts'] += 1
+        detail =self.http.feed_detail(feed_id, token, 100, deep=True) if deep else self.http.feed_detail(feed_id, token, self.limits['max_comments_read'])
         self._tokens[feed_id] = (token, self.now() + 6 * 3600)
         note = detail.get('note') if isinstance(detail, dict) else None
         if not isinstance(note, dict):
             raise Skip('feed_unreadable')
+        if exp and exp.get('task') and feed_id not in exp['reads']:
+            exp['reads'].append(feed_id)
         meta = detail.get('comments') or {}
         roots = meta.get('list') or []
         comments = flatten(roots)
@@ -549,6 +566,7 @@ class Executor:
         if type(attempt) is not int or not 0 <= attempt <= 2:
             raise Skip('invalid_retry_attempt')
         previous = self.store.actions('draft_id=?', (claim['draft_id'],), limit=1) if attempt else []
+        deep_loaded = False      # True once the comments in hand came from a deep (load_all_comments) read
         if previous:
             old = previous[0]
             if old['content'] != content or old['feed_id'] != feed_id or old['comment_id'] != comment_id or old['kind'] != kind:
@@ -558,14 +576,16 @@ class Executor:
                 probe = {**old, 'sent_at': min(r['sent_at'] for r in history), 'pre_ids': history[-1]['pre_ids']}
                 found = self._readback_comment(probe, deep=True)
                 note, comments = self._last_readback_detail
+                deep_loaded = True      # the retry preflight readback was already a deep read: no further deep reread below
             except (ServiceError, Skip):
                 return self._retry_unresolved(claim, 'retry_readback_unavailable')
             if found:
                 exact = not found.startswith('thread:')
                 self.store.finish(old['id'], 'accepted', detail='retry_preflight_already_present', remote_id=found.removeprefix('thread:'),
                                   verification='own_page_exact' if exact else 'same_thread')
-                self.core.draft_report(claim['draft_id'], claim['claim_token'], 'verified' if exact else 'accepted', 'retry_preflight_already_present')
-                self.store.mark_reported(old['id'], 2)
+                outcome = 'verified' if exact else 'readback_same_thread'
+                self.core.draft_report(claim['draft_id'], claim['claim_token'], outcome, 'retry_preflight_already_present')
+                self.store.mark_reported(old['id'], REPORT_LEVEL[outcome])
                 self.sync()
                 return {'status': 'already_present', 'draft_id': claim['draft_id']}
             if not self._last_readback_complete:
@@ -580,12 +600,18 @@ class Executor:
                 raise Skip('target_changed')
         if kind == 'reply':
             hit = next((c for c, _ in comments if str(c.get('id')) == comment_id), None)
+            if hit is None and not deep_loaded:
+                # A nested reply is often absent from the shallow load. Exactly ONE bounded deep read (<= 100 comments, scroll +
+                # expand), as the drafting flow already does; never repeated, never in the path that already read deeply.
+                note, comments = self._detail(feed_id, token, deep=True)
+                deep_loaded = True
+                hit = next((c for c, _ in comments if str(c.get('id')) == comment_id), None)
             if hit is None:
-                raise Skip('target_changed')
+                raise Skip('target_not_loaded')   # NOT evidence that it changed or was deleted: it simply was not read
             author = (hit.get('userInfo') or {}).get('userId', '')
             if (author != target.get('author_id') or author == self.cfg['bound_uid']
                     or hashlib.sha256(str(hit.get('content', '')).encode()).hexdigest() != target.get('comment_hash')):
-                raise Skip('target_changed')   # same comment, same author, same text as the owner saw
+                raise Skip('target_changed')   # same comment ID, same author, same text as the owner saw - all unchanged guards
         fn = (lambda: self.http.reply(feed_id, token, comment_id, content)) if kind == 'reply' else (lambda: self.http.comment(feed_id, token, content))
         row = self._write(kind, fn=fn, feed_id=feed_id, comment_id=comment_id, author=author, content=content,
                           pre_ids=[str(c.get('id')) for c, _ in comments], persona_version=claim.get('persona_version', ''),
@@ -622,10 +648,11 @@ class Executor:
     def _report_row(self, row):
         """Tell the core what happened (accepted / unknown / failed are never reported as verified)."""
         outcome = ('verified' if row['status'] == 'accepted' and row['verification'] == 'own_page_exact'
+                   else 'readback_same_thread' if row['status'] == 'accepted' and row['verification'] == 'same_thread'
                    else 'accepted' if row['status'] == 'accepted' else row['status'] if row['status'] in ('unknown', 'failed_not_sent') else 'failed')
         try:
             self.core.draft_report(row['draft_id'], row['claim_token'], outcome, row['detail'])
-            self.store.mark_reported(row['id'], 2 if outcome == 'verified' else 1)
+            self.store.mark_reported(row['id'], REPORT_LEVEL.get(outcome, 1))
         except CoreUnavailable:
             pass   # report_pending() retries; the ledger already holds the truth
         return {'status': row['status'], 'verification': row['verification'], 'draft_id': row['draft_id'], 'reported': outcome}
@@ -803,19 +830,54 @@ class Executor:
                 return {'status': 'core_unavailable'}
 
     def _autonomy(self, dry_run):
+        """One autonomy step. A claimed curiosity opportunity is reported exactly once whatever happens (a post choice, a
+        model decline, or an exception) and detail attempts are capped at 2 INCLUDING failed ones and the first flow."""
+        self._exp = {'task': None, 'attempts': 0, 'reads': [], 'searches': 0, 'reported': False}
+        try:
+            return self._autonomy_inner(dry_run)
+        finally:
+            self._close_exploration()
+
+    def _close_exploration(self):
+        exp = getattr(self, '_exp', None)
+        if not exp or not exp.get('task') or exp['reported']:
+            return
+        exp['reported'] = True
+        task, exp['task'] = exp['task'], None     # later flows (notifications, deliveries) are no longer part of this opportunity
+        self._report_exploration(task, 'done' if exp['reads'] else 'failed', exp['searches'], min(2, exp['attempts']), exp['reads'])
+
+    def _autonomy_inner(self, dry_run):
         uid = self.cfg['bound_uid']
         feeds, self._refs = [], {}
         intro_wait = False
+        drafts_ok = True
+        exploration = None
+        self._opp = ''
         if not self.ALLOW_DIRECT:
-            # A full review queue stops here: no browse, no model call. An introduction already waiting for review (or sent
-            # but not yet confirmed) is not drafted again every cycle only to be refused by the core.
-            state = self._queue_state()
-            if not state['can_submit']:
-                return {'status': 'draft_queue_full'}
-            intro_wait = self.cfg['visibility'] == '公开可见' and not state['intro_done'] and state['intro_active']
+            # A full review queue (or an unreadable one) only stops DRAFTING: searching and reading continue, because reading
+            # needs neither a comment quota nor a free draft slot. An introduction already waiting for review (or sent but
+            # not yet confirmed) is not drafted again every cycle only to be refused by the core.
+            try:
+                state = self._queue_state()
+            except Skip:
+                state = None
+            drafts_ok = bool(state and state['can_submit'])
+            intro_wait = bool(state and self.cfg['visibility'] == '公开可见' and not state['intro_done'] and state['intro_active'])
         if self.cfg['browse_enabled'] and self.store.count_browses() < self.limits['daily_browses']:
             interests = self.limits['interests']
-            keyword = self.store.get('next_search') or (interests[int(self.rand() * len(interests)) % len(interests)] if self.rand() < 0.5 else '')
+            keyword = ''
+            claim = getattr(self.core, 'explore_claim', None)
+            if claim:
+                # A curiosity opportunity granted by the core (3/day, 60 min, 24 h dedup); our own daily_browses still applies.
+                try:
+                    exploration = claim()
+                except CoreUnavailable:
+                    exploration = None
+            if exploration:
+                keyword = exploration['query']
+                self._exp.update(task=exploration, searches=1)
+            elif self.rand() < 0.5 and interests:
+                keyword = interests[int(self.rand() * len(interests)) % len(interests)]
             self.store.add_browse()  # occupied before the request: a failed browse still counts
             raw = self.http.search(keyword) if keyword else self.http.list_feeds()
             self._ok_read()
@@ -829,7 +891,7 @@ class Executor:
                 feeds.append({'ref': ref, 'title': str(card.get('displayTitle', ''))[:40],
                               'author': str((card.get('user') or {}).get('nickname', ''))[:20],
                               'liked': str((card.get('interactInfo') or {}).get('likedCount', ''))[:10]})
-        post_ok = self.cfg['publish_enabled'] and not self._precheck('post') and not intro_wait
+        post_ok = self.cfg['publish_enabled'] and not self._precheck('post') and not intro_wait and drafts_ok
         if intro_wait and self.cfg['publish_enabled']:
             self.store.put('last_post_skip', {'at': self.now(), 'reason': 'intro_awaiting_review'})
         reuse_days = self.limits['image_reuse_days']
@@ -841,19 +903,62 @@ class Executor:
             images.append({'id': TEXT_CARD, 'caption': CARD_CAPTION})
         if post_ok and not images:
             self.store.put('last_post_skip', {'at': self.now(), 'reason': 'media_recently_used' if every else 'no_publishable_media'})
-        comment_ok = self.cfg['comment_enabled'] and not self._precheck('comment')
-        feeds = feeds if comment_ok else []
+        comment_ok = self.cfg['comment_enabled'] and not self._precheck('comment') and drafts_ok
+        # Candidates stay READABLE whatever the comment quota or draft queue say; only the comment/post actions are gated.
         if not feeds and not images:
-            return {'status': 'nothing_to_consider'}
+            return {'status': 'draft_queue_full' if not drafts_ok and not self.ALLOW_DIRECT else 'nothing_to_consider'}
         plan = self._plan('select', {'interests': self.limits['interests']}, candidates={'feeds': feeds, 'images': images},
-                          budget={'post_allowed': bool(images), 'comment_allowed': comment_ok})
+                          budget={'post_allowed': bool(images), 'comment_allowed': comment_ok, 'read_allowed': bool(feeds)})
         d = plan['decision']
-        self.store.put('next_search', d.get('search_keyword', ''))
+        self._opp = str(plan.get('cycle') or '')
+        self.store.put('next_search', '')   # model-requested searches are queued by the core, never self-started
         if d.get('action') == 'comment' and comment_ok and d.get('ref') in self._refs:
-            return self._comment_flow(d['ref'], dry_run)
-        if d.get('action') == 'post' and images:
+            result = self._comment_flow(d['ref'], dry_run)
+        elif d.get('action') in ('read', 'comment') and d.get('ref') in self._refs:
+            result = self._read_flow(d['ref'], dry_run)
+        elif d.get('action') == 'post' and images:
             return self._post_flow(images, dry_run)
-        return {'status': 'model_waited'}
+        else:
+            result = {'status': 'model_waited'}
+        if exploration:
+            result = self._finish_exploration(exploration, result, d.get('ref'), dry_run)
+        return result
+
+    def _report_exploration(self, task, outcome, searches, reads, content_ids):
+        report = getattr(self.core, 'explore_report', None)
+        if not task or not report:
+            return
+        try:
+            report(task['task_key'], outcome, searches, reads, content_ids)
+        except CoreUnavailable:
+            pass   # the core expires an unreported opportunity itself; it is never retried
+
+    def _finish_exploration(self, task, result, first_ref, dry_run):
+        """At most 1 search (done) + 2 result reads. The second read is another unseen search result, read-only."""
+        for ref, (feed_id, _token, _author) in list(self._refs.items()):
+            if self._exp['attempts'] >= 2:      # detail attempts (failed ones and the first flow included) are the cap
+                break
+            if self.store.is_seen('f:' + feed_id):
+                continue
+            try:
+                self._read_flow(ref, dry_run)
+            except (Skip, ServiceError):
+                continue
+        return {**result, 'exploration': {'task': task['task_key'], 'detail_attempts': self._exp['attempts'], 'reads': len(self._exp['reads'])}}
+
+    def _read_flow(self, ref, dry_run):
+        """Read one note WITHOUT commenting: no comment quota, no draft, no model call. The text-only material is recorded
+        as a read (it never claims the images or a complete browse)."""
+        feed_id, token, author = self._refs[ref]
+        note, comments = self._detail(feed_id, token)
+        self.store.mark_seen('f:' + feed_id, 'read')
+        title, desc = str(note.get('title', '')), str(note.get('desc', ''))
+        if not dry_run:
+            self._event('content_read', event_id='xhs:read:%s:%s' % (feed_id, digest(title + desc)[:12]),
+                        conversation_id='xhs:feed:' + feed_id, actor_id=author or 'unknown',
+                        content=title[:60] + '\n' + desc[:700], source_id=feed_id, origin='platform_content',
+                        opportunity=getattr(self, '_opp', ''))
+        return {'status': 'read_only', 'feed': feed_id}
 
     def _comment_flow(self, ref, dry_run):
         feed_id, token, author = self._refs[ref]
@@ -865,7 +970,7 @@ class Executor:
                                        'comments_shown': len(top[:5]), 'complete_browse': False}}
         self._event('content_read', event_id='xhs:read:%s:%s' % (feed_id, digest(note.get('title', '') + note.get('desc', ''))[:12]),
                     conversation_id='xhs:feed:' + feed_id, actor_id=author or 'unknown', content=material['feed_title'] + '\n' + material['feed_text'],
-                    source_id=feed_id, origin='platform_content')
+                    source_id=feed_id, origin='platform_content', opportunity=getattr(self, '_opp', ''))
         plan = self._plan('comment', material, conversation='xhs:feed:' + feed_id)
         if plan['decision'].get('willing') is not True:
             return {'status': 'model_declined'}

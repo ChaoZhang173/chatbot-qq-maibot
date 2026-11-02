@@ -168,7 +168,9 @@ class CoreTests(unittest.IsolatedAsyncioTestCase):
         candidates = {'feeds': [{'ref': 'f1', 'title': 't'}], 'images': []}
         self.ctx.llm.answers = [{'action': 'comment', 'ref': 'f1', 'search_keyword': '咖啡'}]
         r = await xhs.plan(self.svc, self.request('select', candidates=candidates))
-        self.assertEqual(r['decision'], {'action': 'comment', 'ref': 'f1', 'search_keyword': '咖啡'})
+        # v14.2: a model-requested search is no longer handed back to the executor to run on its own; the core queue owns it
+        # (3/day, 60 min, dedup, 1 search + 2 reads). The ref echo rule is unchanged.
+        self.assertEqual(r['decision'], {'action': 'comment', 'ref': 'f1', 'search_keyword': ''})
         self.ctx.llm.answers = [{'action': 'comment', 'ref': 'f9'}]
         self.assertEqual((await xhs.plan(self.svc, self.request('select', cycle='cd' * 32, candidates=candidates)))['status'], 'rejected')
         self.ctx.llm.answers = [{'action': 'post'}]

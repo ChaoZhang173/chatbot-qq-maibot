@@ -33,6 +33,7 @@ SOURCE_RUNTIME_FILES = {
 SYNTHETIC_URLS = {
     'extensions/tests_phase2/test_api.py': {'https://u:p@www.bilibili.com/opus/123', 'https://u:p@i0.hdslb.com/a'},
     'extensions/tests_phase25/test_commands_web_topics.py': {'https://u:p@example.com'},
+    'extensions/tests_passport_backend/test_web_access.py': {'https://u:p@docs.python.org/x'},
 }
 
 
@@ -61,7 +62,9 @@ def scan_file(path, relative, text=None):
             failures.append(rule)
     for address in re.findall(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])', text):
         synthetic_metadata = (relative.as_posix() in {'extensions/tests_phase25/test_commands_web_topics.py', 'scripts/check_public_files.py'} and address == '169.254.169.254')
-        if address not in {'127.0.0.1'} and not synthetic_metadata:
+        # A wildcard-listener rejection fixture is not a deployed server address.
+        synthetic_listener = relative.as_posix() in {'extensions/tests_passport_gateway/test_siliconflow.py', 'scripts/check_public_files.py'} and address == '0.0.0.0'
+        if address not in {'127.0.0.1'} and not synthetic_metadata and not synthetic_listener:
             failures.append('non-loopback-ipv4')
     if path.suffix in {'.toml', '.json'}:
         try:

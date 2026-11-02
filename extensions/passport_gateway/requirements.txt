@@ -1,0 +1,3 @@
+# Direct runtime dependencies (pinned). Transitive pins: requirements.lock.txt. Everything else is stdlib.
+websockets==15.0.1
+httpx==0.28.1

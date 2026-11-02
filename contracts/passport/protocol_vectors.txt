@@ -1,0 +1,67 @@
+# 语音协议 v1 一致性向量。设备端 C 测试与网关端 Python 测试共同消费本文件。
+# SRV <期望状态> <类型/说明> <JSON>   网关->设备的文本帧;期望状态为 pp_parse_status_t 名称去掉前缀。
+# CLI <名称> <JSON>                   设备->网关的文本帧(网关构造器/解析器的期望字节串)。
+# AUD <OK|BAD> <kind> <hex>           二进制音频帧(载荷用 hex 表示整帧)。
+# ERR <网关错误码> <设备端 PP_ERR_*>   错误码映射。
+SRV OK ready {"v":1,"type":"ready","max_ms":20000,"hz":24000,"up_hz":16000}
+SRV OK transcript {"v":1,"type":"transcript","turn":7,"text":"今天天气怎么样","final":true}
+SRV OK transcript_partial {"v":1,"type":"transcript","turn":7,"text":"今天","final":false}
+SRV OK reply_text {"v":1,"type":"reply_text","turn":7,"text":"天气不错,出门记得带伞。","trunc":false}
+SRV OK reply_escaped {"v":1,"type":"reply_text","turn":7,"text":"你好😀 \"ok\"\n"}
+SRV OK mood {"v":1,"type":"mood","turn":7,"mood":"pleased"}
+SRV OK audio_start {"v":1,"type":"audio_start","turn":7,"hz":24000,"ch":1,"fmt":"pcm_s16le"}
+SRV OK audio_end {"v":1,"type":"audio_end","turn":7,"bytes":96000}
+SRV OK error_turn {"v":1,"type":"error","turn":7,"code":"asr_empty","msg":"no speech detected, a fairly long unknown string field is skipped safely"}
+SRV OK error_conn {"v":1,"type":"error","code":"auth"}
+SRV OK unknown_key_ignored {"v":1,"type":"mood","turn":7,"mood":"gentle","future":12,"flag":true,"nothing":null}
+SRV VERSION version2 {"v":2,"type":"mood","turn":7,"mood":"gentle"}
+SRV MISSING_FIELD no_turn {"v":1,"type":"reply_text","text":"hi"}
+SRV MISSING_FIELD turn_zero {"v":1,"type":"mood","turn":0,"mood":"gentle"}
+SRV MISSING_FIELD no_type {"v":1,"turn":7}
+SRV UNKNOWN_TYPE unknown_type {"v":1,"type":"surprise","turn":7}
+SRV BAD_VALUE mood_bad {"v":1,"type":"mood","turn":7,"mood":"angry"}
+SRV BAD_VALUE hz_bad {"v":1,"type":"audio_start","turn":7,"hz":16000,"ch":1,"fmt":"pcm_s16le"}
+SRV BAD_VALUE fmt_bad {"v":1,"type":"audio_start","turn":7,"hz":24000,"ch":1,"fmt":"opus"}
+SRV BAD_VALUE turn_string {"v":1,"type":"mood","turn":"7","mood":"gentle"}
+SRV BAD_VALUE turn_negative {"v":1,"type":"mood","turn":-7,"mood":"gentle"}
+SRV BAD_VALUE turn_float {"v":1,"type":"mood","turn":7.5,"mood":"gentle"}
+SRV BAD_VALUE turn_overflow {"v":1,"type":"mood","turn":4294967296,"mood":"gentle"}
+SRV MALFORMED nested_object {"v":1,"type":"mood","turn":7,"mood":"gentle","x":{"a":1}}
+SRV MALFORMED nested_array {"v":1,"type":"mood","turn":7,"mood":"gentle","x":[1]}
+SRV MALFORMED duplicate_key {"v":1,"type":"mood","turn":7,"turn":8,"mood":"gentle"}
+SRV MALFORMED trailing_garbage {"v":1,"type":"mood","turn":7,"mood":"gentle"} x
+SRV MALFORMED truncated_json {"v":1,"type":"mood","turn":7,"mood":"gen
+SRV MALFORMED empty_object {}
+SRV MALFORMED not_object ["v",1]
+SRV MALFORMED lone_surrogate {"v":1,"type":"reply_text","turn":7,"text":"\ud83d"}
+SRV MALFORMED bad_escape {"v":1,"type":"reply_text","turn":7,"text":"\q"}
+SRV MALFORMED nul_escape {"v":1,"type":"reply_text","turn":7,"text":"a\u0000b"}
+CLI hello {"v":1,"type":"hello","fw":"0.1.0"}
+CLI start {"v":1,"type":"start","turn":7,"hz":16000,"ch":1,"fmt":"pcm_s16le"}
+CLI end {"v":1,"type":"end","turn":7,"bytes":64000}
+CLI cancel {"v":1,"type":"cancel","turn":7}
+AUD OK 1 0100000000070000aabbccdd
+AUD OK 2 0200000000070001aabb
+AUD BAD 1 0200000000070000aabbccdd
+AUD BAD 2 0201000000070000aabb
+AUD BAD 2 02000000000700
+AUD BAD 2 0200000000070000aabbcc
+AUD BAD 2 0200000000000000aabb
+ERR auth AUTH
+ERR backend_unbound UNBOUND
+ERR provider_unconfigured UNCONFIGURED
+ERR asr_empty EMPTY
+ERR too_long TOO_LONG
+ERR asr_timeout PROVIDER_TIMEOUT
+ERR brain_timeout PROVIDER_TIMEOUT
+ERR tts_timeout PROVIDER_TIMEOUT
+ERR asr_failed PROVIDER
+ERR tts_failed PROVIDER
+ERR brain_failed BRAIN
+ERR queue_full QUEUE
+ERR busy BUSY
+ERR bad_message PROTOCOL
+ERR out_of_order PROTOCOL
+ERR too_large PROTOCOL
+ERR internal PROTOCOL
+ERR never_heard_of_it PROTOCOL

@@ -230,9 +230,10 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.host.llm.answers = [self.learning_answer() for _ in range(25)]
         for _ in range(6):
             await self.service.learning_tick(force=True)
-        self.assertEqual(self.state.quota_used(), 20)
-        self.assertEqual(len(self.host.llm.calls), 20)
-        self.assertEqual(len(self.host.writes), 20)
+        # v14.2: the legacy per-event extraction may use 15 of the 20 daily background positions; 5 are reserved for the daily batch
+        self.assertEqual(self.state.quota_used(), 15)
+        self.assertEqual(len(self.host.llm.calls), 15)
+        self.assertEqual(len(self.host.writes), 15)
         self.assertEqual(len(self.state.learning_candidates()), 5)
 
     async def test_failed_learning_does_not_starve_later_sources(self):
@@ -351,11 +352,12 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_reflection_applies_supported_changes_from_two_sources(self):
         one = self.ingest(self.event("one"))
         two = self.ingest(self.event("two"))
-        self.host.llm.answers = [{"changes": [{"field": "interests", "value": ["AI", "游戏"],
+        # v14.2: expression habits keep the two-distinct-source rule; a stable INTEREST would need ledger contact evidence
+        self.host.llm.answers = [{"changes": [{"field": "expression_habits", "value": "聊到游戏时爱带一点小梗",
                                                 "evidence_ids": [one["event_id"], two["event_id"]], "reason": "两份独立游戏材料"}]}]
         result = await self.service.reflect(force=True)
         self.assertTrue(result.get("result", {}).get("accepted"), result)
-        self.assertEqual(self.state.persona()["dynamic"]["interests"], ["AI", "游戏"])
+        self.assertEqual(self.state.persona()["dynamic"]["expression_habits"], "聊到游戏时爱带一点小梗")
         self.assertEqual(self.state.persona()["stable"], {"identity": "用户设定的大小姐"})
 
     async def test_reflection_can_use_already_learned_evidence(self):
@@ -363,7 +365,7 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         two = self.ingest(self.event("two"))
         self.state.mark_learned(one["event_id"], "stored", ["fact-one"])
         self.state.mark_learned(two["event_id"], "stored", ["fact-two"])
-        self.host.llm.answers = [{"changes": [{"field": "interests", "value": ["AI", "游戏"],
+        self.host.llm.answers = [{"changes": [{"field": "expression_habits", "value": "聊到游戏时爱带一点小梗",
                                                 "evidence_ids": [one["event_id"], two["event_id"]], "reason": "共同经历"}]}]
         result = await self.service.reflect(force=True)
         self.assertTrue(result.get("result", {}).get("accepted"), result)

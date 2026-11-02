@@ -29,7 +29,8 @@
     "unified.memory",
     "send.text",
     "send.image",
-    "chat.open_session"
+    "chat.open_session",
+    "unified.voice"
   ],
   "urls": {
     "repository": "https://github.com/Mai-with-u/MaiBot"

@@ -15,10 +15,10 @@ async def plan(s,r):
     if previous:return previous
     # Reserve before awaits: a repeated request cannot start a second writer.
     s.state.put(key,{'status':'pending','cycle':cycle})
-    context=await s.build_context('qq_channel_post','qq_channel','qq_channel:global','自己的兴趣 好奇心 怪点子 游戏 动漫 美食',purpose='public')
+    context=await s.build_context('qq_channel_post','qq_channel','qq_channel:global','自己的兴趣 好奇心 游戏 动漫 美食',purpose='public')
     prompt=(RULE+'\n'+CONTEXT_RULE+'\n你现在考虑用自己的QQ账号在腾讯频道推荐流发一条公开短帖。'
-        '使用当前共享人格，自由聊自己想聊的东西；喜欢捣乱、胡闹、好奇，容易无聊，会自己寻找新点子。'
-        '可以是一句突发奇想、游戏动漫联想、俏皮歪理、离谱但无伤大雅的挑战、偏爱或吐槽。'
+        '使用当前共享人格，自由聊自己想聊的东西；天真好奇，也容易无聊。'
+        '可以是一句感想、游戏动漫联想、偏爱或轻松吐槽，不必每条都带玩笑或新点子，不硬造奇怪脑洞。'
         '像随手发帖，不写工作日志、活动清单、系统汇报或每日总结，不需要日期或标题，不强行提问。'
         '通常一到五句，没有最低字数，最多250字；想象和愿望可以夸张，但不能编造成已完成的真实经历或操作。'
         '没什么新鲜想法、只有重复的话、已经聊够了，就willing=false，不为填额度发帖。'

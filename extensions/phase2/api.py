@@ -334,8 +334,38 @@ class Bili:
             return self.video(t.oid)
         return t
 
+    def search_videos(self, keyword):
+        """Public in-site keyword search (WBI-signed GET, no side effect). Returns at most 3 BV ids; a title in a
+        search result is NOT a read - the caller hydrates each id through video() before any decision."""
+        from .content_rules import blocked
+        keyword = str(keyword or "").strip()
+        if not 1 <= len(keyword) <= 40 or blocked(keyword) or re.search(r"https?://|[@＠]|\d{5,}", keyword):
+            raise Denied("search_keyword_not_allowed")
+        data = self.request("/x/web-interface/wbi/search/type",
+                            self.signed({"search_type": "video", "keyword": keyword, "page": 1, "order": "totalrank"}))
+        found = []
+        for row in (data.get("result") or [])[:20]:
+            if not isinstance(row, dict):
+                continue
+            bvid, aid = str(row.get("bvid", "")), str(row.get("aid", ""))
+            if re.fullmatch(r"BV[A-Za-z0-9]{10}", bvid) and all(item["bvid"] != bvid for item in found):
+                # the BV id is the identity; a numeric aid is optional extra information
+                found.append({"bvid": bvid, "aid": aid if re.fullmatch(r"[1-9][0-9]{0,19}", aid) else ""})
+            if len(found) == 3:
+                break
+        return found
+
+    def search_candidates(self, keyword):
+        """Search hits as ID-ONLY candidates: NO video detail is fetched here. The caller's single bounded hydration
+        (video(..., with_subtitle=True), counted before the I/O) is the only read of each result."""
+        return [Target("video", row["aid"] or row["bvid"], 1, "", "", "https://www.bilibili.com/video/" + row["bvid"], [], row["bvid"],
+                       "search_result_id_only") for row in self.search_videos(keyword)]
+
     def candidates(self, c, cycle=0):
         # At most 3 content candidates are hydrated per opportunity.
+        keyword = c.get("search_keyword")
+        if keyword:
+            return self.search_candidates(keyword)[: c["max_candidates"]]
         pool = []
         for id in c.get("video_ids", [])[:3]:
             pool.append(("video", str(id)))

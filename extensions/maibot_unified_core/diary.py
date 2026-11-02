@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import hashlib,json,re,time
 from . import content_rules
 from .compact_context import persona,dumps
+from . import persona as character
 
 TZ=ZoneInfo('Asia/Shanghai')
 PRIVATE=re.compile(r'https?://|www\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\d{7,}|私聊|私信|手机号|电话号码|住址|身份证|微信号|QQ号|群号|密码|密钥|口令|真实姓名|现实身份')
@@ -96,8 +97,8 @@ async def draft(service,request):
         if person['uid'] in actors and not PRIVATE.search(person['name']):people.append(person)
     prompt=('先自己判断今天有没有值得发到B站的念头，不要求每天必须发。没什么想说的、素材只是重复或操作计数，就willing=false，当天不写；不能为了打卡硬凑。'
             '愿意发时写一条大肥鱼自己想说的动态，长度随内容，可以只有一句话，通常不超过250字，硬上限800字，没有最低字数。正文1至3个自然段，日期可在末尾单独一小行。'
-            '先从素材里只挑一个让你惦记的小细节、怪点子或互动，把它当整条动态的中心。第一句直接抛出反应、疑问或想法，像她随手想跟别人说点什么。'
-            '围绕这个中心自由展开自己的脑洞、嘴硬、吐槽、偏爱或害羞，允许突然放豪言或笨拙转场。用当下的口吻，不逐项交代自己先做什么又做什么，不复述整个事件经过。'
+            '先从素材里只挑一个让你惦记的小细节或互动，把它当整条动态的中心。第一句直接抛出反应、疑问或想法，像她随手想跟别人说点什么。'
+            '围绕这个中心自然展开自己的想法、偏爱、吐槽或一点点害羞，不必硬造脑洞或固定的嘴硬套路。用当下的口吻，不逐项交代自己先做什么又做什么，不复述整个事件经过。'
             '浏览、群聊和图库是可选素材，不需要每类写一段；即使有qq_interaction也可以完全不写群聊。未选中的经历直接略去，不为了覆盖素材把无关事情串起来。'
             '不写今天先后来又晚上还的行程串联，不附点赞收藏次数、图库整理进度，不用今天就这样过去了或虽然没什么大事作为交差式结尾。'
             '可以只抓标题里一个有意思的词，或真实互动里的一个小转折，从中生出她现在的想法。少量事实自然带过即可，不把依据清单和阅读过程写进正文。'
@@ -111,7 +112,8 @@ async def draft(service,request):
             '只回JSON {"willing":true或false,"reason":"简短写或不写的理由","text":"愿意发才填写正文，不含@或链接","fact_ids":["采用的事实id"],"mention_uids":[]}。不写时text为空，fact_ids和mention_uids为空数组。不需要给各项互动再做决策。\n'+content_rules.RULE)
     feedback=service.state.get('diary_feedback:'+date,{})
     if now-feedback.get('at',0)<3600:prompt+='\n上次草稿的编辑意见，仅用于纠错而不是新事实：'+str(feedback.get('reason',''))[:160]
-    data={'date':date,'persona':persona(service.state.persona().get('dynamic',{}),900),'facts':facts,'public_people':people}
+    view=service.state.persona_view()
+    data={'date':date,'persona':persona(view.get('dynamic',{}),min(1200,character.display_budget(service.policy)),view.get('priority_fields',())),'facts':facts,'public_people':people}
     async with service.busy:
         answer=await service.generate([{'role':'system','content':prompt},{'role':'user','content':dumps(data)}],max_tokens=1600)
     if answer.get('willing') is False:

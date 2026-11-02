@@ -300,7 +300,8 @@ class TextCardTests(unittest.TestCase):
         env = Env(self)
         (env.root / 'media' / 'manifest.json').write_text(json.dumps({'public': True, 'items': []}))
         self.assertEqual(env.ex.autonomy_step(force=True)['status'], 'nothing_to_consider')
-        self.assertEqual(env.core_stub.payloads, [])
+        # v14.2: the read-only exploration claim is the only core traffic of a cycle that has nothing to consider
+        self.assertEqual([p for p in env.core_stub.payloads if not p['op'].startswith('xhs_explore')], [])
 
 
 if __name__ == '__main__':

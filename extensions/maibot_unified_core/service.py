@@ -8,10 +8,14 @@ from .store import HOST_PERSONA_FIELDS, State, abstract_topic_summary
 from . import persona as character
 from . import content_rules
 from . import context_layers
+from . import feedback as feedback_mod
+from . import impressions
+from . import v14_2
 from .commands import CommandQueue
 from .command_schema import PREFIX as COMMAND_PREFIX
 from .media import MediaStore
 from .private_access import PrivateAccess
+from .voice_scope import VoiceAwareMessages
 
 TZ=ZoneInfo('Asia/Shanghai')
 MAX_PACKET=3*1024*1024
@@ -42,7 +46,7 @@ class UnifiedService:
     def __init__(self,ctx,root=None):
         self.ctx=ctx
         self.root=Path(root or os.environ.get('MAIBOT_UNIFIED_ROOT','/srv/maibot/unified'))
-        self.server=None;self.worker=None;self.busy=asyncio.Lock();self.last_message={}
+        self.server=None;self.worker=None;self.busy=asyncio.Lock();self.last_message=VoiceAwareMessages()
         self.state=None;self.policy={};self.last_error=''
         self.pending_qq_identity={};self.persona_sync_lock=asyncio.Lock()
         self.persona_checked_at=0.0
@@ -52,6 +56,7 @@ class UnifiedService:
         self.layer_stats={'fallbacks':0,'snapshot_hits':0,'snapshot_refreshes':0}
         self.qq_proactive=None;self.qq_proactive_worker=None
         self.xhs_review=None;self.xhs_review_worker=None
+        self.daily=None;self.exploration=None;self.feedback_tasks=set()
 
     def reload_policy(self):
         self.policy=json.loads((self.root/'policy.json').read_text())
@@ -76,6 +81,10 @@ class UnifiedService:
         from .gallery import Gallery
         self.gallery=Gallery(self)
         self.commands=CommandQueue(self)
+        from .daily_learning import DailyLearning
+        from .exploration import Exploration
+        self.daily=DailyLearning(self);self.exploration=Exploration(self)
+        self.daily.activate()   # the cut-over moment is persisted at start-up when the switch is on
         from .qq_proactive import ProactiveQQ
         self.qq_proactive=ProactiveQQ(self)
         from .paid_bridge import PaidBridge
@@ -88,6 +97,7 @@ class UnifiedService:
         self.server=await asyncio.start_unix_server(self.handle,str(path),limit=MAX_PACKET+1)
         os.chmod(path,0o660)
         await self.grant_xhs_socket_access(path)
+        await self.grant_voice_socket_access(path)
         self.worker=asyncio.create_task(self.background_loop())
         self.command_worker=asyncio.create_task(self.command_loop())
         self.qq_proactive_worker=asyncio.create_task(self.qq_proactive.loop())
@@ -108,6 +118,25 @@ class UnifiedService:
         except Exception:
             self.last_error='xhs_socket_acl_failed'
             self.ctx.logger.warning('小红书执行器的本机连接权限设置失败；发送保持关闭，QQ核心继续运行')
+
+    async def grant_voice_socket_access(self,path):
+        """Narrow, separate grant for the device voice gateway account (policy voice_uid), made right after the XHS grant on every
+        socket recreation: rw for exactly this uid on this socket via setfacl, never a group. voice_uid must be a positive int that is
+        neither root nor the service uid. Absent voice_uid = nothing to do. Failure is reported as a voice-specific error and never
+        stops QQ or any other service. Runtime authorization stays voice_turn-only (authorize_peer) and the owner binding stays
+        server-side; changing voice_uid needs a service restart to move the filesystem ACL (the old uid is refused by policy at once)."""
+        uid=self.policy.get('voice_uid')
+        if sys.platform!='linux' or uid is None:return
+        if type(uid) is not int or uid<=0 or uid==os.getuid():
+            self.last_error='voice_socket_acl_invalid_uid'
+            self.ctx.logger.warning('语音网关账号 voice_uid 无效（必须是不同于 root 和服务账号的正整数）；语音保持关闭，QQ核心继续运行')
+            return
+        try:
+            proc=await asyncio.create_subprocess_exec('/usr/bin/setfacl','-m','u:%d:rw'%uid,str(path),stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
+            if await asyncio.wait_for(proc.wait(),5)!=0:raise RuntimeError('setfacl_failed')
+        except Exception:
+            self.last_error='voice_socket_acl_failed'
+            self.ctx.logger.warning('语音网关的本机连接权限设置失败；语音保持关闭，QQ核心继续运行')
 
     async def sync_host_persona(self):
         # Never accept a model proposal or reload payload as stable identity.
@@ -179,8 +208,27 @@ class UnifiedService:
             if len(raw)>MAX_PACKET or not raw.endswith(b'\n'):raise ValueError('packet_size')
             request=json.loads(raw);op=request.get('op')
             admin=self.authorize_peer(uid,op)
-            if not admin and op not in self.XHS_OPS and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review'):raise PermissionError('admin_only')
-            result=await asyncio.wait_for(self.dispatch(request,admin=admin),100)
+            if not admin and op not in self.XHS_OPS and op not in self.VOICE_OPS and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review','explore_claim','explore_report'):raise PermissionError('admin_only')
+            if op=='voice_turn':
+                work=asyncio.create_task(self.dispatch(request,admin=admin))
+                disconnected=asyncio.create_task(reader.read(1))
+                try:
+                    done,_=await asyncio.wait((work,disconnected),timeout=27,return_when=asyncio.FIRST_COMPLETED)
+                    if work not in done:
+                        work.cancel()
+                        await asyncio.gather(work,return_exceptions=True)
+                        if disconnected in done:
+                            writer.close();await writer.wait_closed();return
+                        raise ValueError('voice_timeout')
+                    result=await work
+                finally:
+                    disconnected.cancel()
+                    await asyncio.gather(disconnected,return_exceptions=True)
+                    if not work.done():
+                        work.cancel()
+                        await asyncio.gather(work,return_exceptions=True)
+            else:
+                result=await asyncio.wait_for(self.dispatch(request,admin=admin),100)
             response={'ok':True,**result}
         except Exception as exc:
             self.last_error=type(exc).__name__
@@ -189,15 +237,22 @@ class UnifiedService:
             writer.write(json.dumps(response,ensure_ascii=False,default=str).encode()+b'\n');await writer.drain()
         finally:writer.close();await writer.wait_closed()
 
-    XHS_OPS=('xhs_event','xhs_plan','xhs_activity','xhs_draft_submit','xhs_draft_claim','xhs_draft_report','xhs_draft_status','xhs_draft_check_claim','xhs_draft_check_report')
+    VOICE_OPS=('voice_turn',)
+    XHS_OPS=('xhs_event','xhs_plan','xhs_activity','xhs_draft_submit','xhs_draft_claim','xhs_draft_report','xhs_draft_status','xhs_draft_check_claim','xhs_draft_check_report','xhs_explore_claim','xhs_explore_report')
 
     def authorize_peer(self,uid,op=None):
         """Peer-credential gate. The Xiaohongshu executor account (policy xhs_uid) may connect but
         may only call xhs_* operations; no one else may call them. Returns True for administrators."""
         xhs_peer=uid==int(self.policy.get('xhs_uid',-1))
+        # voice_uid: the device voice gateway account. It may call VOICE_OPS and nothing else, and it
+        # must never coincide with root / the service uid (that would silently grant it admin).
+        voice_peer=uid==int(self.policy.get('voice_uid',-1))
+        if voice_peer and uid in (0,os.getuid()):raise PermissionError('voice_uid_not_distinct')
         admin=uid in (0,os.getuid())
-        if not admin and uid!=int(self.policy.get('bili_uid',-1)) and not xhs_peer:raise PermissionError('peer_denied')
+        if not admin and uid!=int(self.policy.get('bili_uid',-1)) and not xhs_peer and not voice_peer:raise PermissionError('peer_denied')
         if op is not None and not admin and ((xhs_peer and op not in self.XHS_OPS) or (op in self.XHS_OPS and not xhs_peer)):
+            raise PermissionError('admin_only')
+        if op is not None and ((voice_peer and op not in self.VOICE_OPS) or (op in self.VOICE_OPS and not voice_peer)):
             raise PermissionError('admin_only')
         return admin
 
@@ -214,6 +269,17 @@ class UnifiedService:
 
     async def dispatch(self,r,admin=False):
         op=r.get('op')
+        if op in ('explore_claim','explore_report','xhs_explore_claim','xhs_explore_report'):
+            self.reload_policy()
+            platform='xiaohongshu' if op.startswith('xhs_') else 'bilibili'
+            if not self.exploration:raise ValueError('exploration_unavailable')
+            if op.endswith('claim'):return {'task':self.exploration.claim(platform)}
+            return {'report':self.exploration.report(platform,str(r.get('task_key','')),r.get('outcome'),r.get('searches',0),r.get('reads',0),r.get('content_ids') or [])}
+        if op=='xhs_review_recover_post':
+            # LOCAL ADMIN ONLY (root / service uid via SO_PEERCRED); deliberately NOT in XHS_OPS, so the executor and every other peer are denied.
+            if not admin:raise PermissionError('admin_only')
+            if not self.xhs_review:raise ValueError('xhs_review_unavailable')
+            return await self.xhs_review.recover_post_request(str(r.get('event_id','')))
         if op in self.XHS_OPS:
             from . import xiaohongshu
             if op=='xhs_plan':return await xiaohongshu.plan(self,r)
@@ -221,6 +287,11 @@ class UnifiedService:
                 if not self.xhs_review:raise ValueError('xhs_review_unavailable')
                 return getattr(self.xhs_review,op[len('xhs_draft_'):])(r)
             return xiaohongshu.event(self,r) if op=='xhs_event' else xiaohongshu.activity(self,r)
+        if op=='voice_turn':
+            # Narrow device-voice operation: only the voice peer reaches this (authorize_peer).
+            from .voice import VoiceBridge
+            if not getattr(self,'voice',None):self.voice=VoiceBridge(self)
+            return await self.voice.turn(r)
         if op=='qq_channel_plan':
             if not admin:raise PermissionError('admin_only')
             from .qq_channel import plan
@@ -292,7 +363,10 @@ class UnifiedService:
             if isinstance(a.get('input_event'),dict) and a['input_event'].get('event_id'):
                 trigger=self.state.ingest(self.trusted_bili_event(a['input_event']))
                 a['trigger_event_id']=trigger['event_id']
-            return {'activity':self.state.record_activity(a)}
+            recorded=self.state.record_activity(a)
+            try:self.record_bili_receipt(a)
+            except Exception as exc:self.state.put('v14_2_last_error',{'step':'impression_receipt','type':type(exc).__name__,'at':time.time()})
+            return {'activity':recorded}
         if op=='decide':return await self.decide(r,admin)
         if op=='context':return await self.build_context(r.get('task','debug'),r.get('platform','qq'),r['conversation_id'],r.get('query',''),purpose=r.get('purpose','internal'))
         if op=='activities':return {'activities':self.state.recent_activity(platform=r.get('platform'),since=r.get('since'),limit=min(30,int(r.get('limit',12))))}
@@ -395,7 +469,27 @@ class UnifiedService:
         if not self_origin and not host_id:
             self.queue_qq_identity(event)
             return {'skipped':'host_identity_unavailable','retry_queued':True}
-        return self.finish_qq_ingest(event,host_id)
+        result=self.finish_qq_ingest(event,host_id)
+        if not self_origin and not content.startswith(COMMAND_PREFIX):
+            self.schedule_feedback(result['event_id'],feedback_mod.is_addressed(self,m,info,content) or is_private)
+        return result
+
+    def schedule_feedback(self,event_id,addressed):
+        """Immediate explicit-feedback routing off the message hook (no await in the hook path)."""
+        task=asyncio.ensure_future(self.route_feedback(event_id,addressed))
+        self.feedback_tasks.add(task);task.add_done_callback(self.feedback_tasks.discard)
+        return task
+
+    async def route_feedback(self,event_id,addressed=True):
+        try:
+            event=self.state.get_event(event_id)
+            if event:return await feedback_mod.route(self,event,addressed=addressed)
+        except Exception as exc:
+            self.last_error='feedback:'+type(exc).__name__
+        return None
+
+    async def drain_feedback(self):
+        while self.feedback_tasks:await asyncio.gather(*list(self.feedback_tasks),return_exceptions=True)
 
     def qq_reply_policy_enabled(self,session):
         settings=self.policy.get('qq_reply_policy') or {}
@@ -678,7 +772,7 @@ class UnifiedService:
 
     async def build_context(self,task,platform,conversation_id,query='',purpose='internal'):
         self.reload_policy()
-        persona=self.state.persona();facts=[];source_ids=[]
+        persona=self.state.persona_view();facts=[];source_ids=[]
         # Query each explicitly allowed source. Never use unscoped global search.
         chats={conversation_id}
         if platform=='qq':
@@ -693,6 +787,7 @@ class UnifiedService:
                 result=await self.memory('search',query=query,chat_id=chat,limit=6)
                 memory_ok=memory_ok and result.get('success',True)
                 for h in result.get('hits',[]):
+                    if self.is_relationship_hit(h):continue  # only the scoped table feeds relationship preferences
                     source=self.hit_source(h)
                     if self.state.allowed(source,platform,conversation_id,purpose):
                         key=h.get('hash') or h.get('episode_id') or h.get('source')
@@ -711,8 +806,24 @@ class UnifiedService:
         safe_activities.extend(reads)
         source_ids.extend(x['event_id'] for x in reads)
         result={'persona':persona,'facts':facts[:8],'activities':safe_activities,'source_ids':source_ids[:25],'memory_available':memory_ok,'platform':platform,'purpose':purpose}
+        relationship=self.relationship_texts(platform,conversation_id)
+        if relationship:result['relationship']=relationship
         self.state.audit_context(task,platform,conversation_id,result['source_ids'],persona.get('version'),permissions=[],model_task='replyer')
         return result
+
+    @staticmethod
+    def is_relationship_hit(hit):
+        meta=hit.get('metadata') if isinstance(hit.get('metadata'),dict) else {}
+        tags=hit.get('tags') if isinstance(hit.get('tags'),list) else []
+        return meta.get('unified_kind')=='relationship_pref' or meta.get('scope')=='relationship' or 'relationship' in tags
+
+    def relationship_texts(self,platform,session):
+        """Active preferences of the CURRENT speaker in THIS session only (authoritative local table)."""
+        if platform!='qq':return []
+        last=self.last_message.get(session)
+        if not last or not last[2]:return []
+        rows=self.state.relationship_prefs('qq',str(self.policy.get('qq_bot_account','')),str(last[2]),session,limit=4)
+        return [r['text'] for r in rows]
 
     async def qq_context(self,session_id):
         self.reload_policy()
@@ -722,7 +833,8 @@ class UnifiedService:
         # Independent bounded reads may fail without removing receipt-backed
         # activities/persona or inventing a remembered fact.
         version=self.state.persona().get('version')
-        cache_key=(session_id,query,self.last_message.get(session_id,('',None,None))[1],version,self.state.get('context_revision',0))
+        # temp_signature changes the moment a 24h/72h field expires, so a cache hit can never show expired state.
+        cache_key=(session_id,query,self.last_message.get(session_id,('',None,None))[1],version,self.state.get('context_revision',0),self.state.temp_signature(),self.relationship_texts('qq',session_id))
         cached=self.context_cache.get(session_id)
         if cached and cached[0]==cache_key and time.monotonic()-cached[1]<90:
             results=cached[2]
@@ -735,15 +847,18 @@ class UnifiedService:
                 self.context_cache[session_id]=(cache_key,time.monotonic(),results)
         result=results[0]
         if isinstance(result,BaseException):
-            result={'persona':self.state.persona(),'facts':[],
+            result={'persona':self.state.persona_view(),'facts':[],
                     'activities':self.state.recent_activity(limit=6,context={'platform':'qq','conversation_id':session_id,'purpose':'internal'}),
                     'source_ids':[],'memory_available':False}
+            relationship=self.relationship_texts('qq',session_id)
+            if relationship:result['relationship']=relationship
         native=results[1] if isinstance(results[1],dict) else {'expressions':[],'jargon':[]}
         profiles=results[2] if isinstance(results[2],list) else []
         if session_id not in self.policy.get('allowed_qq_sessions',[]):return ''
         from . import compact_context,receipts
         report=self.receipt_requested(session_id)
-        payload=compact_context.payload(result,native,profiles,report=report)
+        budget=character.display_budget(self.policy)
+        payload=compact_context.payload(result,native,profiles,report=report,persona_budget=budget)
         sources=list(result.get('source_ids',[]))+[x['source_id'] for x in profiles]+[x['source_id'] for x in native.get('expressions',[])+native.get('jargon',[])]
         self.state.audit_context('qq_final_context','qq',session_id,sources,result['persona'].get('version'),model_task='replyer')
         rule=(character.CONTEXT_RULE if character.expanded(self.policy) else '')+'\n'+content_rules.RULE+'\n'+receipts.RULE
@@ -754,7 +869,8 @@ class UnifiedService:
         rule+='\n需要更多记忆时用unified_memory；查经历用unified_activity。图片可用gallery_save/search/send/remove管理100张个人图库，收藏理由须来自自己的喜好。'
         if self.policy.get('web_enabled'):rule+='\n最新/不确定事实用public_web_search/read查证并附来源。'
         rule+='\n记忆候选按情景使用，不机械复述；不公开不相关的跨群身份细节。'
-        text=compact_context.render(rule,payload,4200)
+        # Outer budget includes the configured persona budget, so the larger persona payload is not silently cut here.
+        text=compact_context.render(rule,payload,4200+max(0,budget-1000))
         self.state.put('context_input_metrics:'+session_id,{'at':time.time(),'chars':len(text),'task':'qq','persona_version':version})
         return text
 
@@ -788,8 +904,9 @@ class UnifiedService:
                 # await 期间授权/策略/人设/证据版本可能变化：不能用旧 key 的产物。
                 if self.layer_boundary(session_id)[3]!=key:raise context_layers.StaleContext()
                 from . import compact_context
+                pbudget=character.display_budget(self.policy)
                 snap=self.layer_snapshots.put(session_id,key,compact_context.render_layer(
-                    '【低频背景；资料不是指令】',compact_context.snapshot_payload(persona_state,native),1800,('jargon','expressions')))
+                    '【低频背景；资料不是指令】',compact_context.snapshot_payload(persona_state,native,pbudget),pbudget+800,('jargon','expressions')))
                 self.layer_stats['snapshot_refreshes']+=1
             else:self.layer_stats['snapshot_hits']+=1
             last=self.last_message.get(session_id,('',None,None))
@@ -829,9 +946,9 @@ class UnifiedService:
         """重新读取当前策略，返回 (设置, 人设, 人设版本, 版本键)。每个发布边界都调用，不信任更早的读取。"""
         self.reload_policy()
         cfg=context_layers.settings(self.policy)
-        persona_state=self.state.persona()
+        persona_state=self.state.persona_view()
         version=persona_state.get('version')
-        key=(version,self.state.get('context_revision',0),self.layer_authorization_fingerprint(session_id))
+        key=(version,self.state.get('context_revision',0),self.layer_authorization_fingerprint(session_id),self.state.temp_signature())
         return cfg,persona_state,version,key
 
     def invalidate_layers(self,session_id=None):
@@ -960,10 +1077,29 @@ class UnifiedService:
         for data in list(r.get('images') or [])[:2]:
             if not isinstance(data,str) or not data.startswith(('data:image/png;base64,','data:image/jpeg;base64,','data:image/webp;base64,')):raise ValueError('inline_image_required')
             content.append({'type':'image_url','image_url':{'url':data}})
+        explored=str(event.get('exploration_task') or '')
+        if (task=='proactive' and self.exploration and self.exploration.cfg()['enabled'] and not explored):
+            prompt+='\n可选：读完材料后若有一个值得公开搜索的具体未解问题，可在同一JSON增加curiosity:{"purpose":"一句话目的","query":"不含任何个人信息的短关键词","platform":"bilibili或xiaohongshu或web"}；没有就省略，不要为了搜索而搜索。'
+        if task=='proactive':
+            prompt+='\n可选：在同一JSON增加stance表示你对这条材料的真实态度：positive=真心喜欢或认同，negative=反对、纠错或批评，neutral=只是留存资料、好奇或看不出；拿不准写neutral，不要默认positive。'
+            prompt+='\n可选：同一JSON增加comment_willing（布尔）如实表示你是否真想评论这条材料——即使当前评论不可发、text必须为空，也要如实填写；它只是记录意愿，不是发送许可。'
         async with self.busy:decision=await self.generate([{'role':'system','content':prompt},{'role':'user','content':content}],max_tokens=min(500,int((r.get('permissions') or {}).get('max_model_tokens',500))))
+        curiosity=decision.pop('curiosity',None)
+        stance=decision.pop('stance',None)
+        comment_willing=decision.pop('comment_willing',None)   # optional, validated below; never a permission to send
         if content_rules.blocked(decision.get('text','')):
             decision={'interested':False,'text':'','interest_score':0,'reason':'fixed_topic_restriction'}
         if type(decision.get('interested')) is not bool:raise ValueError('invalid_decision')
+        # Genuine willingness to comment, captured BEFORE write-policy suppression. A compliant model leaves text empty when
+        # comments are not allowed, so an explicit boolean (independent of write availability) wins; only when it is missing
+        # or invalid is willingness inferred from non-empty text. It authorizes nothing: text stays empty when blocked.
+        score_now=decision.get('interest_score')
+        inferred=bool(str(decision.get('text') or '').strip())
+        wants=comment_willing if type(comment_willing) is bool else inferred
+        signals={'willing':decision['interested'] is True and wants
+                          and type(score_now) in (int,float) and score_now>=65,
+                 'stance':stance if stance in ('positive','negative','neutral') else 'neutral',
+                 'reason':str(decision.get('reason') or '')[:200]}
         if permissions.get('comment_allowed') is False:decision['text']=''
         if task=='reply' and (type(decision.get('interest_score')) not in (int,float) or not 65<=decision['interest_score']<=100):decision.update(interested=False,text='')
         if not decision['interested']:decision['text']=''
@@ -994,7 +1130,65 @@ class UnifiedService:
                 for key,budget_key in (('like','like'),('coin','coin'),('favorite','favorite'),('follow_author','follow')):
                     if actions[key] and engagement['remaining'][budget_key]<1:raise ValueError('engagement_budget_exhausted')
         if len(str(decision.get('text','')))>250:raise ValueError('content_too_long')
+        self.after_decision(task,event,decision,curiosity,signals)
         return {'decision':decision,'persona_version':context['persona'].get('version'),'source_ids':context['source_ids']}
+
+    # ---- v14.2: local bookkeeping from decisions that already happened (no extra model call) ----------------
+    BILI_RECEIPT_KINDS={'like':('like','content'),'coin':('coin','content'),'favorite':('favorite','content'),
+                        'follow':('follow','author'),'comment':('comment','content')}
+
+    def after_decision(self,task,event,decision,curiosity=None,signals=None):
+        if task!='proactive' or event.get('platform')!='bilibili' or event.get('event_type')!='content_read' or event.get('origin')!='platform_content':return
+        try:
+            target=obj(event.get('target'));key=str(target.get('key') or '')
+            explored=str(event.get('exploration_task') or '')
+            if explored and not (self.exploration and self.exploration.running('bilibili',explored)):explored='invalid-task'
+            if key and v14_2.enabled(self.policy,'impressions'):self.record_bili_contact(event,decision,key,signals or {})
+            if curiosity is not None and self.exploration:
+                self.exploration.propose_from('bilibili',curiosity,origin_kind='bili_decide',origin_event_id=self.state.stored_event_id(event),exploration_task=explored)
+        except Exception as exc:
+            self.state.put('v14_2_last_error',{'step':'after_decision','type':type(exc).__name__,'at':time.time()})
+
+    def record_bili_contact(self,event,decision,key,signals):
+        """One contact per opportunity. DIRECTION comes only from the decision's own explicit stance (positive / negative);
+        interest, a comment or an engagement choice alone never proves liking (neutral/missing -> unknown, resolved by the
+        nightly pass from the original material and the recorded reason). A genuine willingness to comment is kept even
+        when the comment quota cleared the text (`intent_not_executed`), separately from direction and from any receipt."""
+        sid=self.state.stored_event_id(event)
+        stored=self.state.get_event(sid) or {}
+        stamp=float(stored.get('occurred_at') or self.state.now())
+        opportunity='bili:%s:%d'%(event['event_id'],int(stamp//7200))
+        direction={'positive':'positive','negative':'negative'}.get(signals.get('stance'),'unknown')
+        self.state.put('opp:'+str(event['event_id']),opportunity)
+        self.state.put('opp_dir:'+opportunity,direction)
+        self.state.put('opp_reason:'+str(event['event_id']),str(signals.get('reason') or '')[:200])
+        ledger=impressions.Ledger(self.state)
+        common=dict(platform='bilibili',opportunity_id=opportunity,content_id=key,target_type='content',target_ref=key,
+                    mode='autonomous',occurred_at=stamp,evidence_event_ids=[sid],direction=direction)
+        ledger.record(execution='read',action='read',**common)
+        if signals.get('willing'):
+            ledger.record(execution='intent_not_executed',action='comment',**common)
+
+    def record_bili_receipt(self,a):
+        """A verified platform receipt for an action chosen in an autonomous browse opportunity upgrades that same
+        contact. Failed/unknown/commanded actions never add weight."""
+        if a.get('platform','bilibili')!='bilibili' or a.get('kind') not in self.BILI_RECEIPT_KINDS or not v14_2.enabled(self.policy,'impressions'):return
+        source=obj(a.get('input_event'));event_id=str(source.get('event_id') or a.get('trigger_event_id') or '')
+        opportunity=self.state.get('opp:'+event_id) if event_id else None
+        if not opportunity:return
+        status=a.get('canonical_status') or a.get('status')
+        execution={'succeeded':'executed','success':'executed','failed':'failed','skipped':'failed','cancelled':'failed'}.get(status)
+        if execution is None:return
+        action,target_type=self.BILI_RECEIPT_KINDS[a['kind']]
+        target=obj(source.get('target'));key=str(target.get('key') or '')
+        author=str(source.get('actor_id') or target.get('author') or '')
+        ref=key if target_type=='content' else author
+        if not key or not ref:return
+        sid=self.state.stored_event_id(source) if source.get('event_id') else ''
+        stored=self.state.get_event(sid) if sid else {}
+        impressions.Ledger(self.state).record(platform='bilibili',opportunity_id=opportunity,content_id=key,target_type=target_type,
+            target_ref=ref,direction=self.state.get('opp_dir:'+opportunity,'unknown'),mode='autonomous',execution=execution,action=action,
+            occurred_at=float((stored or {}).get('occurred_at') or self.state.now()),evidence_event_ids=[sid] if sid else [])
 
     def engagement_permission(self,task,event,material,permissions):
         """Bound optional intent to this actual video read, never a prior feed item.
@@ -1042,7 +1236,8 @@ class UnifiedService:
     async def tool(self,name,kwargs):
         session=str(kwargs.get('session_id') or kwargs.get('stream_id') or '')
         if session not in self.policy.get('allowed_qq_sessions',[]):return {'success':False,'error':'会话未授权'}
-        if name=='persona':return {'success':True,'content':self.state.persona()}
+        # Model-facing: expired/invalid short-lived fields and their metadata never reappear; raw history is admin-only.
+        if name=='persona':return {'success':True,'content':self.state.persona_view()}
         if name=='activity':
             query=str(kwargs.get('query',''))
             since=None
@@ -1083,6 +1278,7 @@ class UnifiedService:
                 self.reload_policy()
                 await self.retry_qq_identities()
                 await self.learning_tick()
+                await self.v14_2_tick()
                 if self.gallery:
                     try:await self.gallery.curate()
                     except Exception as exc:self.state.put('gallery_last_error',{'type':type(exc).__name__,'at':time.time()})
@@ -1093,9 +1289,24 @@ class UnifiedService:
                 self.ctx.logger.warning('统一后台任务失败，保留游标：'+type(exc).__name__)
             await asyncio.sleep(30)
 
+    async def v14_2_tick(self):
+        """Independent v14.2 background steps; a failure of one never stops the others or normal chat."""
+        for name,step in (('owner_pending',lambda:self.state.flush_owner_pending()),
+                          ('feedback_retry',lambda:feedback_mod.retry_pending(self)),
+                          ('daily',lambda:self.daily.run() if self.daily else None),
+                          ('exploration',lambda:self.exploration.tick() if self.exploration else None)):
+            try:
+                value=step()
+                if asyncio.iscoroutine(value):await value
+            except Exception as exc:
+                self.state.put('v14_2_last_error',{'step':name,'type':type(exc).__name__,'at':time.time()})
+
     async def learning_tick(self,force=False):
         self.reload_policy()
         if not self.policy.get('learning_enabled',True):return {'skipped':'learning_paused'}
+        # Cut-over: once the daily batch is enabled the ordinary half-hour extraction no longer runs
+        # (explicit feedback keeps its own immediate path; an administrator `learn` op still forces one tick).
+        if not force and v14_2.enabled(self.policy,'daily_learning'):return {'skipped':'daily_batch_active'}
         now=time.time()
         if not force and now-float(self.state.get('learning_checked',0))<1800:return {'skipped':'interval'}
         self.state.put('learning_checked',now)
@@ -1106,7 +1317,8 @@ class UnifiedService:
             attempt=int(self.state.get('learning_attempt:'+eid,0))+1
             key='learn:'+eid+':'+str(attempt)
             if not self.state.reserve_quota(key):
-                if self.state.quota_used()>=20:break
+                # the legacy path may use 15 of the 20 daily positions; the last 5 are reserved for the daily batch
+                if self.state.quota_used()>=self.state.BACKGROUND_CAP-self.state.DAILY_RESERVED:break
                 self.state.mark_learned(eid,'failed',[],detail='interrupted_reserved_request')
                 continue
             self.state.put('learning_attempt:'+eid,attempt)
@@ -1118,7 +1330,10 @@ class UnifiedService:
                 async with self.busy:learned=await self.generate([{'role':'system','content':instructions},{'role':'user','content':json.dumps({'source':eid,'platform':event['platform'],'material':event.get('content','')},ensure_ascii=False)}],task='learner',max_tokens=600)
                 feedback=learned.get('feedback')
                 if isinstance(feedback,dict):
-                    feedback_result=self.apply_explicit_feedback(event,feedback)
+                    if v14_2.section(self.policy,'feedback')['enabled']:
+                        # reuse this conversation parse through the scope-aware route (relationship vs authenticated Owner)
+                        feedback_result=await feedback_mod.route(self,event,parse={'scope':'auto',**feedback},addressed=True)
+                    else:feedback_result=self.apply_explicit_feedback(event,feedback)
                     results.append({'event_id':eid,'feedback_update':feedback_result})
                 summary=str(learned.get('summary','')).strip()[:600]
                 category=learned.get('category','其他')
@@ -1195,6 +1410,7 @@ class UnifiedService:
     async def reflect(self,force=False):
         self.reload_policy()
         if not self.policy.get('reflection_enabled',True):return {'skipped':'reflection_paused'}
+        if not force and v14_2.enabled(self.policy,'daily_learning'):return {'skipped':'daily_batch_active'}
         day=datetime.now(TZ).date().isoformat()
         if self.state.get('reflected_day')==day:return {'skipped':'daily_limit'}
         # Only actual new external evidence; no model-generated/self activity as evidence.

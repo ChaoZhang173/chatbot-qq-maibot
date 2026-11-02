@@ -162,8 +162,8 @@ class StoreTests(unittest.TestCase):
             self.clock[0] += 1
         feedback = self.ingest("new-explicit-feedback", content="请少用哼这个口头禅，回复短一些")
         self.state.put("learning_cursor", {"last_seen": "keep-existing-cursor"})
-        for i in range(18):
-            self.assertTrue(self.state.reserve_quota(f"existing-background-{i}"))
+        for i in range(18):   # protected: stands for background use that already included the daily batch's reserved slots
+            self.assertTrue(self.state.reserve_quota(f"existing-background-{i}", protected=True))
         selected = self.state.learning_candidates(99)
         self.assertEqual(len(selected), 5)
         self.assertEqual(selected[0]["event_id"], feedback["event_id"])
@@ -331,7 +331,11 @@ class StoreTests(unittest.TestCase):
         b = self.ingest("read-b", platform="bilibili", bot_account_id="bot-bili", source_id="same-video")
         self.assertFalse(self.state.propose_changes({"interests": ["AI"]}, [a["event_id"], b["event_id"]], "repeated read")["accepted"])
         c = self.ingest("read-c", platform="bilibili", bot_account_id="bot-bili", source_id="second-video")
-        self.assertTrue(self.state.propose_changes({"interests": ["AI"]}, [a["event_id"], c["event_id"]], "two sources")["accepted"])
+        # v14.2: two distinct external sources still satisfy the sustained-evidence rule for expression habits, but a STABLE interest
+        # additionally needs qualified impression-ledger contacts.
+        self.assertEqual(self.state.propose_changes({"interests": ["AI"]}, [a["event_id"], c["event_id"]], "two sources")["reason"],
+                         "interest_requires_contact_evidence")
+        self.assertTrue(self.state.propose_changes({"expression_habits": "a small habit"}, [a["event_id"], c["event_id"]], "two sources")["accepted"])
         self.assertFalse(self.state.propose_changes({"tone": "soft", "verbosity": "short", "curiosity": 0.2}, [a["event_id"], c["event_id"]], "too broad")["accepted"])
 
     def test_actual_feedback_message_supports_structured_list_but_not_platform_content(self):
@@ -370,9 +374,13 @@ class StoreTests(unittest.TestCase):
             self.assertFalse(self.state.allowed({**source, "sharing_scope": "conversation"}, "qq", "group-b"))
 
     def test_quota_reservations_persist_failed_requests_and_china_midnight(self):
-        for i in range(20):
+        for i in range(15):
             self.assertTrue(self.state.reserve_quota(f"request-{i}"))
-        self.assertFalse(self.state.reserve_quota("request-20", limit=999))
+        # v14.2: the last 5 of the 20/day background positions are reserved for the daily batch and its retries
+        self.assertFalse(self.state.reserve_quota("request-15"))
+        for i in range(15, 20):
+            self.assertTrue(self.state.reserve_quota(f"request-{i}", protected=True))
+        self.assertFalse(self.state.reserve_quota("request-20", limit=999, protected=True))
         self.assertFalse(self.state.reserve_quota("request-0"))
         self.restart()
         self.assertEqual(self.state.quota_used(), 20)

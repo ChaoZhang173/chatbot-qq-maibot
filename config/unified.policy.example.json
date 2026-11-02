@@ -10,8 +10,28 @@
   "learning_enabled": false,
   "reflection_enabled": false,
   "persona_updates_enabled": false,
+  "persona_display_budget": 1800,
+  "v14_2": {
+    "feedback": {
+      "enabled": true
+    },
+    "impressions": {
+      "enabled": true
+    },
+    "daily_learning": {
+      "enabled": false
+    },
+    "exploration": {
+      "enabled": false
+    }
+  },
   "qq_reply_policy": {
     "enabled": false,
     "casual_probability": 0.7
-  }
+  },
+  "voice_enabled": false,
+  "voice_uid": -1,
+  "xhs_enabled": false,
+  "xhs_manual_mode": true,
+  "xhs_manual_proactive": false
 }

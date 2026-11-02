@@ -40,6 +40,9 @@ async def plan(s,r):
     prompt+='\n选settings时额外返回section和fields（仅修改字段对象），必须有具体且值得改变的理由，不因刚获得权限而凑改动。公开字段只能用角色设定和可公开摘要，不能放群友/主人身份、私聊或群聊原话。'+HELP+' 消息字段枚举：'+json.dumps({k:sorted(v) for k,v in MESSAGE_FIELDS.items()})
     prompt+='\n当前任务只是在B站自主活动，不是判断要不要回复QQ群。QQ群无人说话、无人@你、不宜刷群，均不是停止B站浏览的理由；这些群聊约束仅适用于QQ发言。浏览视频无需有人找你，也不等于必须发动态或评论。不要把几小时前的活动说成刚刚发生。'
     prompt+='\nexploration给出当前北京时间、距上次B站自主浏览的分钟数和连续休息次数。若browse_due=true且browse可用，优先去发现符合当前兴趣的新视频；否则可以休息或选择其他活动。浏览后才按实际材料判断是否点赞、收藏、投币或关注，可全部不做，不为完成额度而互动。休息理由应来自当前B站状态、兴趣或近期具体活动，不以等待QQ群消息为理由。'
+    exploring=bool(getattr(s,'exploration',None) and s.exploration.enabled('bilibili'))
+    if exploring:
+        prompt+='\n可选：选browse时，若有一个想在站内搜索的具体公开话题，可在同一JSON增加curiosity:{"purpose":"一句话目的","query":"不含任何个人信息的短关键词","platform":"bilibili或xiaohongshu或web"}；没有就省略。搜索次数很少，不要为了搜索而搜索。'
     content={'platform':'bilibili','task_scope':'independent_bilibili_activity','exploration':r.get('exploration',{}),'available':available,'persona':context['persona'],'public_memories':context['facts'],'recent_activity':context['activities'],
              'own_account_settings':snapshot,'trigger':r.get('trigger','idle'),'remaining':r.get('remaining',{})}
     async with s.busy:answer=await s.generate([{'role':'system','content':prompt},{'role':'user','content':json.dumps(content,ensure_ascii=False,default=str)}],max_tokens=700)
@@ -51,6 +54,9 @@ async def plan(s,r):
         if section=='profile' and len(fields)!=1:raise ValueError('one_profile_field_per_action')
         job=s.commands.enqueue(cycle,'autonomy:bilibili',str(s.policy['bili_bot_uid']),cycle,spec(section,fields),False)
         decision['request_id']=job['request_id']
+    if exploring and action=='browse':
+        try:s.exploration.propose_from('bilibili',answer.get('curiosity'),origin_kind='bili_autonomy')
+        except Exception:pass
     result={'decision':decision,'persona_version':context['persona']['version']}
     s.state.put('autonomy_plan:'+cycle,result);s.state.put('last_autonomy_plan',{'at':time.time(),**result})
     s.state.audit_context('autonomy','bilibili','self:'+str(s.policy['bili_bot_uid']),context['source_ids'],context['persona']['version'],permissions=available,model_task='replyer')

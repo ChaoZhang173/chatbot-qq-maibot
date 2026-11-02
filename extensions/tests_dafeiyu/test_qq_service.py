@@ -232,6 +232,10 @@ class QQServiceTests(unittest.IsolatedAsyncioTestCase):
             await self.service.decide({},admin=True)
 
     async def test_explicit_feedback_reuses_learner_call_without_repeating_daily_reflection(self):
+        # v14.2: with the scoped-feedback switch ON (the default) an ordinary user's feedback becomes a relationship preference and
+        # never a global change (see tests_v14_2/test_feedback_scope.py). This test keeps covering the historical global
+        # mechanics, which are preserved only while that switch is off.
+        (self.service.root/'policy.json').write_text(json.dumps({**self.policy,'v14_2':{'feedback':{'enabled':False}}}))
         calls=[]
         async def generate(*args,**kwargs):
             calls.append(kwargs)

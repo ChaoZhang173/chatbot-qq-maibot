@@ -242,7 +242,10 @@ class DeliveryTests(StrictBase):
                 env.service.comments.remove(target)
             else:
                 target['userInfo']['userId'] = UID
-            self.assertEqual(env.ex.deliver_approved()['status'], 'refused:target_changed', how)
+            # Reply-target hotfix: a target that is still absent after the one bounded deep read is NOT evidence that it was
+            # deleted/changed - it is `target_not_loaded`. An actual author/text difference stays `target_changed`.
+            expected = 'refused:target_not_loaded' if how == 'deleted' else 'refused:target_changed'
+            self.assertEqual(env.ex.deliver_approved()['status'], expected, how)
             self.assertEqual(env.service.writes(), [], how)
 
     def test_switches_pause_limits_and_account_are_rechecked_at_delivery(self):
@@ -483,11 +486,13 @@ class QueueEconomyTests(unittest.TestCase):
         self.assertEqual((draft['kind'], draft['target']['feed_id'], draft['target']['author_id']), ('comment', FEED, OTHER))
         self.assertEqual(env.service.writes(), [])
 
-    def test_a_full_review_queue_spends_no_model_budget_and_no_browse(self):
+    def test_a_full_review_queue_spends_no_model_budget_but_reading_continues(self):
         env = self.strict()
         env.core_stub.can_submit = False
         self.assertEqual(env.ex.autonomy_step(force=True)['status'], 'draft_queue_full')
-        self.assertEqual((self.plans(env), env.store.count_browses(), env.store.model_calls_today()), ([], 0, 0))
+        # v14.2 (user: search/read must work with a full draft queue): the browse itself still happens and is counted against
+        # the existing daily_browses quota, but no model budget is spent on drafting and nothing is submitted.
+        self.assertEqual((self.plans(env), env.store.count_browses(), env.store.model_calls_today()), ([], 1, 0))
         env.core_stub.decisions['reply'] = {'willing': True, 'text': '谢谢'}
         env.ex.poll_notifications()
         env.clock.t += 120

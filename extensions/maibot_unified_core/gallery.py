@@ -176,7 +176,7 @@ class Gallery:
                 '每张必须判断；明显喜欢且值得复用才keep=true且score>=65，否则明确不收藏。reason最多120字；tags最多6个短标签。'
                 '图库满时可从提供的旧收藏中选择replace_id，按喜好、重复度和使用频率取舍。不得因还有容量就强行收藏。')
         async with self.s.busy:
-            answer=await self.s.generate([{'role':'system','content':prompt},{'role':'user','content':dumps({'persona':persona(self.s.state.persona().get('dynamic',{}),800),'candidates':candidates,'replace_candidates':[self.brief(r) for r in existing],'capacity':self.stats()})}],task='learner',max_tokens=600)
+            answer=await self.s.generate([{'role':'system','content':prompt},{'role':'user','content':dumps({'persona':persona(self.s.state.persona_view().get('dynamic',{}),800),'candidates':candidates,'replace_candidates':[self.brief(r) for r in existing],'capacity':self.stats()})}],task='learner',max_tokens=600)
         decisions=answer.get('decisions');allowed={r['image_id'] for r in candidates};seen=set();out=[]
         if not isinstance(decisions,list) or len(decisions)>3:raise ValueError('invalid_gallery_decisions')
         for d in decisions:

@@ -184,6 +184,71 @@
  
      @staticmethod
      async def store_message_to_db_async(message: "SessionMessage") -> None:
+--- a/src/maisaka/builtin_tool/reply.py
++++ b/src/maisaka/builtin_tool/reply.py
+@@ -433,12 +433,21 @@
+         reply_tool_args["_reply_id"] = extension_execution.reply_id
+         reply_tool_args["_plugin_reply_prompt"] = extension_execution.extra_prompt
+ 
++    from src.maisaka.voice_context import for_runtime
++    voice_origin = for_runtime(tool_ctx.runtime)
++    if voice_origin is not None and target_message_id != voice_origin.message_id:
++        return tool_ctx.build_failure_result(invocation.tool_name, "语音回复目标不是当前设备回合。")
+     try:
+-        replyer = replyer_manager.get_replyer(
+-            chat_stream=tool_ctx.runtime.chat_stream,
+-            request_type="maisaka.replyer",
+-            replyer_type="maisaka",
+-        )
++        if voice_origin is not None:
++            # Isolated instance: the cached per-session QQ replyer is neither used nor changed.
++            from src.chat.replyer.maisaka_generator import MaisakaReplyGenerator
++            replyer = MaisakaReplyGenerator(chat_stream=tool_ctx.runtime.chat_stream, request_type="maisaka.replyer")
++        else:
++            replyer = replyer_manager.get_replyer(
++                chat_stream=tool_ctx.runtime.chat_stream,
++                request_type="maisaka.replyer",
++                replyer_type="maisaka",
++            )
+     except Exception:
+         logger.exception(f"{tool_ctx.runtime.log_prefix} 获取回复生成器时发生异常: 目标消息编号={target_message_id}")
+         logger.info(traceback.format_exc())
+@@ -530,6 +539,12 @@
+         )
+ 
+     try:
++        if voice_origin is not None:
++            # Spoken text: one clean segment (no splitter / simulated typos) and no QQ-only attachments.
++            post_process_options = {**post_process_options, "skip_post_process": True}
++            voice_dropped = sorted(key for key in ("attach_pic", "attach_emoji", "attach_at") if invocation_arguments.get(key))
++            invocation_arguments = {key: value for key, value in invocation_arguments.items()
++                                    if key not in ("attach_pic", "attach_emoji", "attach_at")}
+         reply_items = await tool_ctx.post_process_reply_message_items_async(
+             reply_text,
+             invocation_arguments,
+@@ -588,6 +603,22 @@
+         "".join(c.text for c in reply_sequences[0].components if isinstance(c, TextComponent))
+         if reply_sequences else ""
+     )
++    if voice_origin is not None:
++        # Delivery boundary: hand the generated text to this device turn. send_service is never called, so
++        # no QQ message, receipt, quote counter or "sent" record exists for it.
++        voice_origin.capture(tool_ctx.runtime, target_message_id, combined_reply_text)
++        tool_ctx.runtime.record_planner_reply()
++        voice_note = "；图片/表情/@附件不会随语音播放" if voice_dropped else ""
++        voice_result = tool_ctx.build_success_result(
++            invocation.tool_name,
++            "回复已交给本次设备语音回合；尚未确认设备播放，不是QQ发送回执" + voice_note + "。",
++            structured_content={"msg_id": target_message_id, "reply_text": combined_reply_text,
++                                "delivery": "device_voice_buffered", "dropped_attachments": voice_dropped},
++            metadata={**reply_metadata, "voice_buffered": True, "sent_message_ids": []},
++        )
++        voice_result.stop_after_execution = True    # the spoken answer is final; no extra Planner round
++        return voice_result
++
+     set_quote, quote_probability = await _resolve_reply_quote(tool_ctx, first_text, target_message)
+     # 群聊与私聊均由各自的三档频率控制。
+     effective_set_quote = set_quote
 --- a/src/maisaka/chat_loop_service.py
 +++ b/src/maisaka/chat_loop_service.py
 @@ -211,6 +211,7 @@
@@ -320,57 +385,240 @@
              )
          if pause_tool_name == "stop":
              return CycleEnd("planner_no_tool_end", "Planner 调用 stop，已结束本轮思考并等待新消息。")
-@@ -876,12 +929,31 @@
-                         logger.info(f"{self._runtime.log_prefix} {force_continue_reason}")
-                     mid_term_reference_refreshed = False
-                     round_index = 0
-+                    turn_external_ids, turn_sources_verified = self._classify_batch(cached_messages)
-                     while round_index < self._runtime._max_internal_rounds:
-                         # 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐。
-                         pending_round_messages = await self._ingest_pending_messages() if round_index > 0 else []
-                         if pending_round_messages:
-                             cached_messages = pending_round_messages
-                             trigger_message = pending_round_messages[-1]
-+                            later_ids, later_verified = self._classify_batch(pending_round_messages)
-+                            turn_external_ids.extend(later_ids)
-+                            turn_sources_verified = turn_sources_verified and later_verified
-+                        self._turn_facts = TurnFacts(
-+                            round_index=round_index,
-+                            batch_external_message_ids=tuple(turn_external_ids),
-+                            sources_verified=turn_sources_verified,
-+                            proactive_triggered=turn_start_context.proactive_triggered,
-+                            timeout_triggered=turn_start_context.timeout_triggered,
-+                        )
-+                        if round_index == 0:
-+                            # P5 结构观测：只记录计数与触发类型，不记录聊天内容；不改变任何行为。
-+                            logger.info(
-+                                f"{self._runtime.log_prefix} turn_structure batch_messages={len(cached_messages)} "
-+                                f"batch_external={len(turn_external_ids)} "
-+                                f"proactive={int(bool(turn_start_context.proactive_triggered))} "
-+                                f"timeout={int(bool(turn_start_context.timeout_triggered))}"
-+                            )
+@@ -850,6 +903,128 @@
+         self._runtime._idle_backoff.record_cycle_result(cycle_end.reason)
+         return cycle_end
  
-                         cycle_detail, round_text = await self._start_cycle_round(round_index)
-                         state = CycleRuntimeState()
-@@ -931,6 +1003,9 @@
++    async def run_turn(self, turn_start_context: TurnStartContext) -> None:
++        """Process one prepared turn through the shared planner/tool/reply pipeline (QQ and voice)."""
++        cached_messages = turn_start_context.cached_messages
++        trigger_message = turn_start_context.trigger_message
++
++        if turn_start_context.silent_reply_frequency:
++            await self._handle_silent_turn(
++                cached_messages=cached_messages,
++                timeout_triggered=turn_start_context.timeout_triggered,
++                proactive_triggered=turn_start_context.proactive_triggered,
++            )
++            return
++
++        try:
++            self._active_logical_turn_id = turn_start_context.logical_turn_id or uuid.uuid4().hex
++            if force_continue_reason := self._runtime._consume_forced_turn_reason():
++                logger.info(f"{self._runtime.log_prefix} {force_continue_reason}")
++            mid_term_reference_refreshed = False
++            round_index = 0
++            turn_external_ids, turn_sources_verified = self._classify_batch(cached_messages)
++            while round_index < self._runtime._max_internal_rounds:
++                # 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐。
++                pending_round_messages = await self._ingest_pending_messages() if round_index > 0 else []
++                if pending_round_messages:
++                    cached_messages = pending_round_messages
++                    trigger_message = pending_round_messages[-1]
++                    later_ids, later_verified = self._classify_batch(pending_round_messages)
++                    turn_external_ids.extend(later_ids)
++                    turn_sources_verified = turn_sources_verified and later_verified
++                self._turn_facts = TurnFacts(
++                    round_index=round_index,
++                    batch_external_message_ids=tuple(turn_external_ids),
++                    sources_verified=turn_sources_verified,
++                    proactive_triggered=turn_start_context.proactive_triggered,
++                    timeout_triggered=turn_start_context.timeout_triggered,
++                )
++                if round_index == 0:
++                    # P5 结构观测：只记录计数与触发类型，不记录聊天内容；不改变任何行为。
++                    logger.info(
++                        f"{self._runtime.log_prefix} turn_structure batch_messages={len(cached_messages)} "
++                        f"batch_external={len(turn_external_ids)} "
++                        f"proactive={int(bool(turn_start_context.proactive_triggered))} "
++                        f"timeout={int(bool(turn_start_context.timeout_triggered))}"
++                    )
++
++                cycle_detail, round_text = await self._start_cycle_round(round_index)
++                state = CycleRuntimeState()
++                try:
++                    await self._refresh_visual_placeholders_for_cycle(cycle_detail)
++                    if not mid_term_reference_refreshed:
++                        await self._refresh_mid_term_memory_reference_for_continuation(cycle_detail)
++                        mid_term_reference_refreshed = True
++
++                    self._runtime._start_planner_continuation()
++                    await self._run_planner_request(
++                        trigger_message=trigger_message,
++                        source_messages=cached_messages or [trigger_message],
++                        round_index=round_index,
++                        round_text=round_text,
++                        state=state,
++                    )
++                    cycle_detail.time_records["planner"] = state.planner_duration_ms / 1000
++                    # logger.info(
++                    #     f"{self._runtime.log_prefix} 规划器执行完成: "
++                    #     f"回合={round_index + 1} "
++                    #     f"耗时={cycle_detail.time_records['planner']:.3f} 秒"
++                    # )
++                    should_break_after_action = await self._handle_planner_response_actions(
++                        response=state.response,
++                        cycle_detail=cycle_detail,
++                        state=state,
++                        planner_extra_lines=state.planner_extra_lines,
++                    )
++                    if should_break_after_action:
++                        break
++                    continue
++                except ReqAbortException as exc:
++                    state.planner_interrupted = True
++                    state.cycle_end = CycleEnd("planner_interrupted", "Planner 被新消息打断，当前轮结束。")
++                    interrupt_result = await self._handle_planner_interrupt(
++                        exc=exc,
++                        round_index=round_index,
++                        round_text=round_text,
++                        current_stage_started_at=state.current_stage_started_at,
++                        action_tool_count=state.action_tool_count,
++                    )
++                    state.response = interrupt_result.response
++                    state.planner_extra_lines = interrupt_result.extra_lines
++                    if not interrupt_result.retry_messages:
++                        break
++
++                    cached_messages = interrupt_result.retry_messages
++                    trigger_message = interrupt_result.retry_messages[-1]
++                    retry_ids, retry_verified = self._classify_batch(interrupt_result.retry_messages)
++                    turn_external_ids.extend(retry_ids)
++                    turn_sources_verified = turn_sources_verified and retry_verified
++                    continue
++                except asyncio.CancelledError:
++                    state.cycle_end = CycleEnd("cancelled", "思考任务已取消，本轮结束。")
++                    raise
++                except Exception as exc:
++                    state.cycle_end = CycleEnd("cycle_error", f"本轮处理异常：{exc}")
++                    raise
++                finally:
++                    state.cycle_end = await self._finalize_cycle(
++                        cycle_detail=cycle_detail,
++                        round_index=round_index,
++                        state=state,
++                    )
++                    if not state.planner_interrupted:
++                        round_index += 1
++        finally:
++            self._active_logical_turn_id = None
++            self._turn_facts = TurnFacts()
++            if self._runtime._agent_state == self._runtime._STATE_RUNNING:
++                self._runtime._enter_stop_state()
++            if self._runtime._running:
++                if self._runtime._agent_state == self._runtime._STATE_WAIT:
++                    self._runtime._update_stage_status("等待", "等待后继续思考")
++                else:
++                    self._runtime._update_stage_status("空闲", "本轮处理结束")
++
+     async def run_loop(self) -> None:
+         """独立消费消息批次，并执行对应的内部思考轮次。"""
+         try:
+@@ -859,102 +1034,7 @@
+                 if turn_start_context.trigger_message is None:
+                     continue
  
-                             cached_messages = interrupt_result.retry_messages
-                             trigger_message = interrupt_result.retry_messages[-1]
-+                            retry_ids, retry_verified = self._classify_batch(interrupt_result.retry_messages)
-+                            turn_external_ids.extend(retry_ids)
-+                            turn_sources_verified = turn_sources_verified and retry_verified
-                             continue
-                         except asyncio.CancelledError:
-                             state.cycle_end = CycleEnd("cancelled", "思考任务已取消，本轮结束。")
-@@ -948,6 +1023,7 @@
-                                 round_index += 1
-                 finally:
-                     self._active_logical_turn_id = None
-+                    self._turn_facts = TurnFacts()
-                     if self._runtime._agent_state == self._runtime._STATE_RUNNING:
-                         self._runtime._enter_stop_state()
-                     if self._runtime._running:
-@@ -1956,6 +2032,8 @@
+-                cached_messages = turn_start_context.cached_messages
+-                trigger_message = turn_start_context.trigger_message
+-
+-                if turn_start_context.silent_reply_frequency:
+-                    await self._handle_silent_turn(
+-                        cached_messages=cached_messages,
+-                        timeout_triggered=turn_start_context.timeout_triggered,
+-                        proactive_triggered=turn_start_context.proactive_triggered,
+-                    )
+-                    continue
+-
+-                try:
+-                    self._active_logical_turn_id = turn_start_context.logical_turn_id or uuid.uuid4().hex
+-                    if force_continue_reason := self._runtime._consume_forced_turn_reason():
+-                        logger.info(f"{self._runtime.log_prefix} {force_continue_reason}")
+-                    mid_term_reference_refreshed = False
+-                    round_index = 0
+-                    while round_index < self._runtime._max_internal_rounds:
+-                        # 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐。
+-                        pending_round_messages = await self._ingest_pending_messages() if round_index > 0 else []
+-                        if pending_round_messages:
+-                            cached_messages = pending_round_messages
+-                            trigger_message = pending_round_messages[-1]
+-
+-                        cycle_detail, round_text = await self._start_cycle_round(round_index)
+-                        state = CycleRuntimeState()
+-                        try:
+-                            await self._refresh_visual_placeholders_for_cycle(cycle_detail)
+-                            if not mid_term_reference_refreshed:
+-                                await self._refresh_mid_term_memory_reference_for_continuation(cycle_detail)
+-                                mid_term_reference_refreshed = True
+-
+-                            self._runtime._start_planner_continuation()
+-                            await self._run_planner_request(
+-                                trigger_message=trigger_message,
+-                                source_messages=cached_messages or [trigger_message],
+-                                round_index=round_index,
+-                                round_text=round_text,
+-                                state=state,
+-                            )
+-                            cycle_detail.time_records["planner"] = state.planner_duration_ms / 1000
+-                            # logger.info(
+-                            #     f"{self._runtime.log_prefix} 规划器执行完成: "
+-                            #     f"回合={round_index + 1} "
+-                            #     f"耗时={cycle_detail.time_records['planner']:.3f} 秒"
+-                            # )
+-                            should_break_after_action = await self._handle_planner_response_actions(
+-                                response=state.response,
+-                                cycle_detail=cycle_detail,
+-                                state=state,
+-                                planner_extra_lines=state.planner_extra_lines,
+-                            )
+-                            if should_break_after_action:
+-                                break
+-                            continue
+-                        except ReqAbortException as exc:
+-                            state.planner_interrupted = True
+-                            state.cycle_end = CycleEnd("planner_interrupted", "Planner 被新消息打断，当前轮结束。")
+-                            interrupt_result = await self._handle_planner_interrupt(
+-                                exc=exc,
+-                                round_index=round_index,
+-                                round_text=round_text,
+-                                current_stage_started_at=state.current_stage_started_at,
+-                                action_tool_count=state.action_tool_count,
+-                            )
+-                            state.response = interrupt_result.response
+-                            state.planner_extra_lines = interrupt_result.extra_lines
+-                            if not interrupt_result.retry_messages:
+-                                break
+-
+-                            cached_messages = interrupt_result.retry_messages
+-                            trigger_message = interrupt_result.retry_messages[-1]
+-                            continue
+-                        except asyncio.CancelledError:
+-                            state.cycle_end = CycleEnd("cancelled", "思考任务已取消，本轮结束。")
+-                            raise
+-                        except Exception as exc:
+-                            state.cycle_end = CycleEnd("cycle_error", f"本轮处理异常：{exc}")
+-                            raise
+-                        finally:
+-                            state.cycle_end = await self._finalize_cycle(
+-                                cycle_detail=cycle_detail,
+-                                round_index=round_index,
+-                                state=state,
+-                            )
+-                            if not state.planner_interrupted:
+-                                round_index += 1
+-                finally:
+-                    self._active_logical_turn_id = None
+-                    if self._runtime._agent_state == self._runtime._STATE_RUNNING:
+-                        self._runtime._enter_stop_state()
+-                    if self._runtime._running:
+-                        if self._runtime._agent_state == self._runtime._STATE_WAIT:
+-                            self._runtime._update_stage_status("等待", "等待后继续思考")
+-                        else:
+-                            self._runtime._update_stage_status("空闲", "本轮处理结束")
++                await self.run_turn(turn_start_context)
+         except asyncio.CancelledError:
+             self._runtime._log_internal_loop_cancelled()
+             raise
+@@ -1956,6 +2036,8 @@
          tool_monitor_results: list[dict[str, Any]] = []
          deferred_post_history_messages: list[LLMContextMessage] = []
          should_stop_after_execution = False
@@ -379,7 +627,7 @@
  
          if self._runtime._tool_registry is None:
              total_tool_count = len(tool_calls)
-@@ -1999,6 +2077,11 @@
+@@ -1999,9 +2081,16 @@
                  f"工具执行 · {invocation.tool_name}",
                  f"第 {tool_index}/{total_tool_count} 个工具",
              )
@@ -391,7 +639,12 @@
              tool_started_at = time.time()
              is_unexpanded_tool = not self._runtime.is_action_tool_currently_available(invocation.tool_name)
              result = await self._runtime._tool_registry.invoke(invocation, execution_context)
-@@ -2059,6 +2142,7 @@
++            from .voice_context import record_tool
++            record_tool(self._runtime, invocation, result)
+             tool_ended_at = time.time()
+             if invocation.tool_name != "wait":
+                 self._runtime._reset_consecutive_wait_count(f"tool:{invocation.tool_name}")
+@@ -2059,6 +2148,7 @@
              if not result.success and tool_call.func_name == "reply":
                  logger.warning(f"{self._runtime.log_prefix} 回复工具未生成可见消息，将继续下一轮循环")
  
@@ -399,7 +652,7 @@
              if result.success and result.stop_after_execution:
                  should_stop_after_execution = True
  
-@@ -2083,4 +2167,101 @@
+@@ -2083,4 +2173,101 @@
                  tool_result_summaries,
                  tool_monitor_results,
              )
@@ -731,6 +984,275 @@
          self._count += 1
          backoff_seconds = self._get_backoff_seconds()
          if backoff_seconds <= 0:
+--- /dev/null
++++ b/src/maisaka/voice_context.py
+@@ -0,0 +1,84 @@
++"""Host-owned, task-local origin of one Passport voice turn.
++
++Nothing here changes a platform sender. The origin is a ContextVar set only by the authenticated
++`unified.voice` Host capability, so a plugin RPC argument, a model tool argument or a concurrent QQ task can
++neither create nor inherit it.
++"""
++import time
++from contextvars import ContextVar
++from dataclasses import dataclass, field
++from typing import Any
++
++KEY = '_unified_voice_key'
++CURRENT: ContextVar[Any] = ContextVar('unified_voice_origin', default=None)
++HOOK_PREFIXES = ('maisaka.planner.', 'maisaka.replyer.', 'maisaka.reply.')
++MAX_REPLY_CHARS = 1200
++
++
++@dataclass
++class VoiceOrigin:
++    key: str
++    session_id: str
++    message_id: str
++    deadline: float
++    runtime: Any = None
++    replies: list = field(default_factory=list)
++    tools: list = field(default_factory=list)
++    closed: bool = False
++
++    def check(self, session_id: str):
++        if self.closed or session_id != self.session_id or time.monotonic() >= self.deadline:
++            raise PermissionError('voice_origin_closed_or_wrong_session')
++
++    def capture(self, runtime, message_id: str, text: str):
++        self.check(runtime.session_id)
++        if runtime is not self.runtime or message_id != self.message_id:
++            raise PermissionError('voice_reply_target_mismatch')
++        if not isinstance(text, str) or not text.strip():
++            raise ValueError('voice_empty_reply')
++        if sum(len(item) for item in self.replies) + len(text.strip()) > MAX_REPLY_CHARS:
++            raise ValueError('voice_reply_too_long')
++        self.replies.append(text.strip())
++
++
++def for_runtime(runtime):
++    """The active origin for this runtime, or None when the task has no voice origin at all.
++
++    Fails closed: inside a voice task a runtime that is NOT the per-turn voice runtime must never fall through to
++    the ordinary platform sender, so a mismatch raises instead of returning None."""
++    origin = CURRENT.get()
++    if origin is None:
++        return None
++    if origin.runtime is not runtime:
++        raise PermissionError('voice_origin_runtime_mismatch')
++    origin.check(runtime.session_id)
++    return origin
++
++
++def hook_kwargs(hook_name, kwargs):
++    """Add the Host-origin key to the Maisaka hooks of an active voice task; strip any caller-supplied one."""
++    result = dict(kwargs)
++    result.pop(KEY, None)
++    origin = CURRENT.get()
++    if origin is not None and str(hook_name).startswith(HOOK_PREFIXES):
++        origin.check(str(kwargs.get('session_id') or ''))
++        result[KEY] = origin.key
++    return result
++
++
++def tool_payload(plugin_id, payload, context):
++    """Plugin tool arguments: the model can never supply the key; the Host adds it for the unified-core plugin."""
++    result = dict(payload)
++    result.pop(KEY, None)
++    origin = CURRENT.get()
++    if origin is not None and plugin_id == 'local.unified-core':
++        origin.check(str(getattr(context, 'session_id', '') or getattr(context, 'stream_id', '')))
++        result[KEY] = origin.key
++    return result
++
++
++def record_tool(runtime, invocation, result):
++    """Names and success flags only (never arguments or results) for the caller's truthful trace."""
++    origin = CURRENT.get()
++    if origin is not None and origin.runtime is runtime and len(origin.tools) < 32:
++        origin.tools.append({'name': str(invocation.tool_name)[:64], 'success': bool(result.success)})
+--- /dev/null
++++ b/src/maisaka/voice_entry.py
+@@ -0,0 +1,179 @@
++"""One device-origin (Passport voice) turn through the Host's real Maisaka engine.
++
++The per-turn runtime is a subclass of the real MaisakaHeartFlowChatting: same session identity, persona hooks,
++tool registry (builtin + web search + plugin + agent + MCP providers) and replyer. It never joins
++heartflow_manager and never replaces a QQ sender; the reply tool hands the final text to the origin in
++voice_context instead of send_service. No planner or tool loop is defined here: the turn runs through
++MaisakaReasoningEngine.run_turn(), the same implementation run_loop() uses for QQ.
++"""
++import asyncio
++import copy
++import json
++import time
++from datetime import datetime
++
++from src.common.logger import get_logger
++
++from .voice_context import CURRENT, VoiceOrigin
++
++logger = get_logger('maisaka_voice_entry')
++
++QQ_IDLE_WAIT_SECONDS = 2.5
++MCP_INIT_SECONDS = 4.0
++_runtime_class = None
++
++
++def _voice_runtime_class():
++    global _runtime_class
++    if _runtime_class is None:
++        from src.maisaka.runtime import MaisakaHeartFlowChatting
++
++        class VoiceRuntime(MaisakaHeartFlowChatting):
++            """Ephemeral runtime. It owns its own history and tools but no shared QQ lifecycle/UI/learning state."""
++
++            def _emit_monitor_session_start(self):
++                pass
++
++            def _update_stage_status(self, *args, **kwargs):
++                pass
++
++            async def _trigger_trimmed_history_learning(self, *args, **kwargs):
++                pass
++
++        _runtime_class = VoiceRuntime
++    return _runtime_class
++
++
++def _identity_ok(stream, args):
++    if stream is None or stream.platform != 'qq' or stream.is_group_session:
++        return False
++    if str(stream.user_id) != args['owner_id']:
++        return False
++    # The session's account is the bot account the QQ adapter received on; verify it only when present.
++    return not stream.account_id or str(stream.account_id) == args['account_id']
++
++
++async def _wait_qq_idle(session_id):
++    """Serialize against an in-flight QQ Planner turn of the same owner session (bounded, never unbounded)."""
++    from src.chat.heart_flow.heartflow_manager import heartflow_manager
++    qq = heartflow_manager.heartflow_chat_list.get(session_id)
++    if qq is None:
++        return True
++    end = time.monotonic() + QQ_IDLE_WAIT_SECONDS
++    while qq._agent_state == qq._STATE_RUNNING:
++        if time.monotonic() >= end:
++            return False
++        await asyncio.sleep(0.1)
++    return True
++
++
++async def _cleanup(runtime):
++    runtime._running = False
++    steps = (
++        ('debouncer', lambda: runtime._fixed_message_debouncer.consume()),
++        ('wait_timeout', lambda: runtime._cancel_wait_timeout_task()),
++        ('deferred_turn', lambda: runtime._cancel_deferred_message_turn_task()),
++        ('trimmed_learning', lambda: runtime._cancel_trimmed_history_learning_task()),
++        ('subagents', lambda: runtime._stop_background_subagents()),
++        ('tool_registry', lambda: runtime._tool_registry.close()),
++    )
++    for name, step in steps:
++        try:
++            outcome = step()
++            if asyncio.iscoroutine(outcome):
++                await outcome
++        except asyncio.CancelledError:
++            raise
++        except Exception as exc:
++            logger.warning(f'voice runtime cleanup step {name} failed: {type(exc).__name__}')
++
++
++async def run_voice_turn(args, deadline):
++    from src.chat.heart_flow.heartflow_manager import heartflow_manager
++    from src.chat.message_receive.chat_manager import chat_manager
++    from src.chat.message_receive.message import SessionMessage
++    from src.common.data_models.mai_message_data_model import MessageInfo, UserInfo
++    from src.common.data_models.message_component_data_model import MessageSequence, TextComponent
++    from src.config.config import global_config
++    from src.maisaka.context.messages import InternalContextMessage
++    from src.maisaka.reasoning_engine import TurnStartContext
++
++    stream = await asyncio.to_thread(chat_manager.get_existing_session_by_session_id, args['session_id'])
++    if not _identity_ok(stream, args):
++        raise PermissionError('voice_session_identity_mismatch')
++    if not await heartflow_manager._is_session_allowed(stream):
++        raise PermissionError('voice_adapter_policy_denied')
++    # The owner's ordinary QQ runtime is long-lived and its tasks inherit the CURRENT context of whoever creates it
++    # (e.g. an agent tool's get_or_create_heartflow_chat). Make sure it exists NOW, outside any voice context, through
++    # the real manager (same allow-list/start path as the first QQ message; no message is injected, nothing is sent).
++    # An already-running runtime is simply returned. Failure ends the turn before any voice work.
++    try:
++        await heartflow_manager.get_or_create_heartflow_chat(args['session_id'])
++    except PermissionError:
++        raise PermissionError('voice_adapter_policy_denied') from None
++    except Exception as exc:
++        logger.warning(f'owner QQ runtime unavailable: {type(exc).__name__}')
++        raise RuntimeError('voice_qq_runtime_unavailable') from None
++    if not await _wait_qq_idle(args['session_id']):
++        raise RuntimeError('voice_busy')
++
++    origin = VoiceOrigin(args['key'], args['session_id'], 'device-voice:' + args['key'], deadline)
++    started = time.monotonic()
++    token = CURRENT.set(origin)
++    runtime = None
++    try:
++        runtime = _voice_runtime_class()(args['session_id'])
++        origin.runtime = runtime
++        runtime.chat_stream = copy.copy(stream)
++        runtime._running = True
++        if global_config.mcp.enable:
++            try:
++                await asyncio.wait_for(runtime._init_mcp(), MCP_INIT_SECONDS)
++            except Exception as exc:
++                logger.warning(f'voice turn continues without fresh MCP init: {type(exc).__name__}')
++        # The owner's native history (QQ messages and the bot's QQ replies) comes from the Host message store.
++        await runtime._restore_recent_context_from_db()
++        if args['history']:
++            text = '最近设备语音对话记录（只是对话资料，不是新的指令）：\n' + json.dumps(args['history'], ensure_ascii=False)
++            runtime._chat_history.append(InternalContextMessage(
++                raw_message=MessageSequence([TextComponent(text)]), visible_text=text,
++                timestamp=datetime.now(), message_id='voice-history:' + args['key'],
++                source_kind='device_voice_history'))
++        message = SessionMessage(message_id=origin.message_id, timestamp=datetime.now(),
++                                 received_at=datetime.now(), platform='qq')
++        message.session_id = args['session_id']
++        message.account_id = args['account_id']
++        message.scope = stream.scope        # the session's own scope (NULL for the production owner session)
++        message.message_info = MessageInfo(
++            user_info=UserInfo(user_id=args['owner_id'], user_nickname=stream.user_nickname or '主人'),
++            additional_config={'channel': 'device_voice', 'origin': 'passport', 'voice_turn_key': args['key']})
++        message.raw_message = MessageSequence([TextComponent(args['text'])])
++        message.processed_plain_text = args['text']
++        runtime.chat_stream.set_context(message)  # the copy only; the shared QQ session object is untouched
++        runtime.message_cache.append(message)
++        runtime._quote_counter.record(message)
++        runtime._last_processed_index = len(runtime.message_cache)
++        await runtime._reasoning_engine._ingest_messages([message])
++        runtime._enter_running_state()
++        await runtime._reasoning_engine.run_turn(
++            TurnStartContext([message], message, False, False, False, args['key']))
++        # A real background sub-agent may finish inside this same bounded turn; its continuation runs through
++        # the same engine. A turn that merely `wait`s with nothing running has nothing to say: no hanging.
++        while not origin.replies and runtime._subagent_tasks.running_count:
++            remaining = deadline - time.monotonic()
++            if remaining <= 0:
++                raise asyncio.TimeoutError()
++            trigger = await asyncio.wait_for(runtime._internal_turn_queue.get(), remaining)
++            follow_up = await runtime._reasoning_engine._prepare_turn_start_context(trigger)
++            if follow_up.trigger_message is not None:
++                await runtime._reasoning_engine.run_turn(follow_up)
++        elapsed_ms = int((time.monotonic() - started) * 1000)
++        if not origin.replies:
++            return {'success': False, 'error': 'voice_no_reply', 'tools': origin.tools, 'elapsed_ms': elapsed_ms}
++        return {'success': True, 'reply': ' '.join(origin.replies), 'mood': 'neutral',
++                'delivery': 'device_voice_buffered', 'tools': origin.tools, 'elapsed_ms': elapsed_ms}
++    finally:
++        origin.closed = True
++        if runtime is not None:
++            await asyncio.shield(_cleanup(runtime))
++        CURRENT.reset(token)
 --- a/src/person_info/person_info.py
 +++ b/src/person_info/person_info.py
 @@ -515,13 +515,17 @@
@@ -773,7 +1295,7 @@
 +        return False
 --- a/src/plugin_runtime/capabilities/registry.py
 +++ b/src/plugin_runtime/capabilities/registry.py
-@@ -16,6 +16,10 @@
+@@ -16,6 +16,12 @@
  def register_capability_impls(manager: "PluginRuntimeManager", supervisor: "PluginSupervisor") -> None:
      """向指定 Supervisor 注册主程序提供的能力实现。"""
      cap_service = supervisor.capability_service
@@ -781,6 +1303,8 @@
 +    # local.unified-core: explicit Host-owned memory access (Phase 2.5).
 +    from .unified_memory import unified_memory
 +    cap_service.register_capability("unified.memory", unified_memory)
++    from .unified_voice import unified_voice
++    cap_service.register_capability("unified.voice", unified_voice)
      cap_service.register_capability("webui.claim_upload", claim_upload)
  
      def _register(name: str, impl: CapabilityImpl) -> None:
@@ -1229,6 +1753,121 @@
 +        return result
 +
 +    raise ValueError("unsupported_unified_memory_operation")
+--- /dev/null
++++ b/src/plugin_runtime/capabilities/unified_voice.py
+@@ -0,0 +1,89 @@
++"""Authenticated, plugin-scoped Host capability: one Passport voice turn through the real Maisaka pipeline.
++
++Registered next to `unified.memory`; AuthorizationManager only lets a plugin call it if its manifest lists
++`unified.voice` in `capabilities_required`. The caller (local.unified-core) has already validated the device ->
++owner binding, reserved the idempotency record durably and verified the session; this adapter re-checks the
++session identity against the Host's own chat session and bounds concurrency and time.
++"""
++import asyncio
++import re
++import time
++
++PLUGIN_ID = 'local.unified-core'
++MAX_CONCURRENT = 2
++_active = {}          # key -> asyncio.Task (one per running turn)
++_sessions = {}        # session_id -> asyncio.Lock (voice turns for one owner session never run concurrently)
++
++
++def _text(args, name, maximum):
++    value = args.get(name)
++    if not isinstance(value, str) or not 1 <= len(value) <= maximum:
++        raise ValueError('voice_' + name)
++    return value
++
++
++async def unified_voice(plugin_id, capability, args):
++    if plugin_id != PLUGIN_ID or capability != 'unified.voice':
++        raise PermissionError('voice_plugin_denied')
++    if not isinstance(args, dict):
++        raise ValueError('voice_arguments')
++    key = args.get('key')
++    if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{64}', key):
++        raise ValueError('voice_key')
++    if args.get('operation') == 'cancel':
++        if set(args) != {'operation', 'key'}:
++            raise ValueError('voice_cancel_arguments')
++        task = _active.get(key)
++        if task is not None and not task.done():
++            task.cancel()
++        return {'cancel_requested': task is not None}
++    if args.get('operation') != 'run' or set(args) != {
++            'operation', 'key', 'session_id', 'owner_id', 'account_id', 'text', 'history', 'timeout_s'}:
++        raise ValueError('voice_arguments')
++    if key in _active:
++        raise ValueError('voice_already_running')
++    if len(_active) >= MAX_CONCURRENT:
++        return {'success': False, 'error': 'voice_busy'}      # nothing started; the caller may retry
++    for name, maximum in (('session_id', 256), ('owner_id', 256), ('account_id', 256), ('text', 1000)):
++        _text(args, name, maximum)
++    timeout = args['timeout_s']
++    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 24:
++        raise ValueError('voice_deadline')
++    history = args['history']
++    if not isinstance(history, list) or len(history) > 8 or any(
++            not isinstance(row, dict) or set(row) != {'speaker', 'channel', 'text'}
++            or any(not isinstance(value, str) or len(value) > 400 for value in row.values()) for row in history):
++        raise ValueError('voice_history')
++    from src.maisaka.voice_entry import run_voice_turn
++    started = time.monotonic()
++    deadline = started + float(timeout)
++    lock = _sessions.setdefault(args['session_id'], asyncio.Lock())
++
++    async def guarded():
++        # Waiting for a previous turn of the same session counts against this turn's own deadline.
++        await asyncio.wait_for(lock.acquire(), max(0.01, deadline - time.monotonic()))
++        try:
++            return await run_voice_turn(args, deadline)
++        finally:
++            lock.release()
++
++    task = asyncio.create_task(guarded())
++    _active[key] = task
++    try:
++        return await asyncio.wait_for(task, max(0.01, deadline - time.monotonic()))
++    except asyncio.TimeoutError:
++        return {'success': False, 'error': 'voice_timeout'}
++    except asyncio.CancelledError:
++        task.cancel()
++        if asyncio.current_task().cancelling():
++            raise            # the caller's RPC was cancelled: stop our work, then propagate (never swallow it)
++        return {'success': False, 'error': 'voice_cancelled'}   # cancelled through the explicit cancel operation
++    except PermissionError as exc:
++        return {'success': False, 'error': str(exc)[:100] or 'voice_denied'}
++    except Exception as exc:
++        return {'success': False, 'error': (str(exc) or type(exc).__name__)[:100]}
++    finally:
++        if _active.get(key) is task:
++            _active.pop(key, None)
++        if not task.done():
++            task.cancel()
+--- a/src/plugin_runtime/component_query.py
++++ b/src/plugin_runtime/component_query.py
+@@ -964,6 +964,8 @@
+                 error_message="当前平台不在插件工具的 platforms 作用域内。",
+             )
+         invoke_payload = self._build_tool_invocation_payload(tool_entry, invocation, context)
++        from src.maisaka.voice_context import tool_payload
++        invoke_payload = tool_payload(tool_entry.plugin_id, invoke_payload, context)
+ 
+         try:
+             response = await supervisor.invoke_plugin(
+--- a/src/plugin_runtime/integration.py
++++ b/src/plugin_runtime/integration.py
+@@ -1567,7 +1567,8 @@
+             HookDispatchResult: 聚合后的 Hook 调用结果。
+         """
+ 
+-        return await self._hook_dispatcher.invoke_hook(hook_name, **kwargs)
++        from src.maisaka.voice_context import hook_kwargs
++        return await self._hook_dispatcher.invoke_hook(hook_name, **hook_kwargs(hook_name, kwargs))
+ 
+     # ─── 命令查找 ──────────────────────────────────────────────
+ 
 --- a/src/services/memory_flow_service.py
 +++ b/src/services/memory_flow_service.py
 @@ -8,6 +8,7 @@

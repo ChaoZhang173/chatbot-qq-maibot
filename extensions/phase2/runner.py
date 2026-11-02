@@ -218,6 +218,33 @@ class Engine:
         self.sync()
         return result
 
+    # ---- curiosity exploration (the core grants at most 3/day, >=60 min apart; 1 search + 2 reads each) ----
+    def claim_exploration(self):
+        """Claim one curiosity opportunity from the core (3/day, >=60 min apart). Called ONLY from the real autonomous
+        browse entry (phase2.boost.browse); a missing core never enables a local fallback search."""
+        state = self.__dict__.setdefault("_explore", {"task": None, "reads": [], "attempts": 0, "searches": 0})
+        try:
+            task = self.unified_request({"op": "explore_claim"}).get("task")
+        except Exception:
+            return None
+        if isinstance(task, dict) and isinstance(task.get("query"), str) and task.get("task_key"):
+            state.update(task=task, searches=1)
+            return task
+        return None
+
+    def report_exploration(self, outcome):
+        state = getattr(self, "_explore", None) or {}
+        task = state.get("task")
+        if not task:
+            return
+        self._explore = {"task": None, "reads": [], "attempts": 0, "searches": 0}
+        try:
+            self.unified_request({"op": "explore_report", "task_key": task["task_key"], "outcome": outcome,
+                                  "searches": state.get("searches", 1), "reads": min(2, state.get("attempts", 0)),
+                                  "content_ids": state.get("reads", [])[:2]})
+        except Exception:
+            pass   # the core expires an unreported opportunity itself; it is never retried
+
     def proactive(self, target=None):
         c = self.config()
         cycle = self.s.get("browse_cycle", 0)

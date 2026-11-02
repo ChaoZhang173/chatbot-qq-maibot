@@ -111,7 +111,7 @@ async def interpret(queue, key):
             snapshot = {}
         request = job['spec']
         content = {'owner_request': request[REQUEST], 'provided_targets': request['provided_targets'],
-                   'persona': s.state.persona(), 'own_account_settings': snapshot}
+                   'persona': s.state.persona_view(), 'own_account_settings': snapshot}   # TTL-aware: no expired state/focus
         try:
             async def call():
                 async with s.busy:

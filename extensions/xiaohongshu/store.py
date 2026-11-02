@@ -111,12 +111,18 @@ class Store:
                                    "AND verification='own_page_exact' AND remote_id=?", (feed_id,)).fetchone() is not None
 
     def unreported(self, limit=5):
-        """Draft rows whose outcome the core has not heard yet (or can now hear as verified)."""
-        return self.actions("draft_id!='' AND status!='sending' AND (reported=0 OR (reported=1 AND status='accepted' AND verification='own_page_exact'))", limit=limit)
+        """Draft rows whose outcome the core has not heard yet, or can now hear with stronger evidence.
+        reported: 0 not told, 1 told (accepted/unknown/failed), 3 told 'same thread readback', 2 told 'verified' (final).
+        Evidence only ever moves up: 1 -> same_thread(3) -> verified(2); a told level is never re-sent."""
+        return self.actions("draft_id!='' AND status!='sending' AND (reported=0 OR (status='accepted' AND "
+                            "((verification='own_page_exact' AND reported IN (1,3)) OR (verification='same_thread' AND reported=1))))", limit=limit)
 
     def mark_reported(self, action_id, level):
         with self._lock:
-            self.db.execute('UPDATE actions SET reported=? WHERE id=?', (level, action_id))
+            row = self.db.execute('SELECT reported FROM actions WHERE id=?', (action_id,)).fetchone()
+            rank = {0: 0, 1: 1, 3: 2, 2: 3}      # told-level order: none < accepted < same_thread < verified; never lowered
+            if row and rank.get(level, 1) > rank.get(row['reported'], 1):
+                self.db.execute('UPDATE actions SET reported=? WHERE id=?', (level, action_id))
 
     def close(self):
         with self._lock:

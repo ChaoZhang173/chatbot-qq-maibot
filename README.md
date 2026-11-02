@@ -1,8 +1,11 @@
-# 大肥鱼：QQ／B站／小红书聊天机器人部署扩展
+# 大肥鱼：QQ／B站／小红书与 Passport 语音终端
 
-2026-11-01 当前部署版本的脱敏源码快照。基于 MaiBot 1.3.14，保存统一核心、QQ 官方／原生适配器、B站和小红书执行器、v13 人格参考配置及必要 Host／浏览器运行时补丁；不包含完整上游程序或生产运行数据。详见 [本次快照说明](docs/SNAPSHOT-20261101.zh.md)。历史 [Token 优化评估](docs/TOKEN-OPTIMIZATION-20261031.zh.md) 是设计与评审记录；当前已部署代码以本次源码清单和完整 Host 补丁为准，示例实验开关仍默认关闭。
+2026-11-03 当前部署服务器的脱敏源码快照。基于 MaiBot 1.3.14，包含统一核心、平台适配器、Passport 语音网关、v14.2 人格参考模板及完整 Host 补丁。详见 [本次快照与验证边界](docs/SNAPSHOT-20261103.zh.md)。不包含生产配置、凭据、聊天记录和数据库。
 
 ## 当前能力
+
+- **Passport 语音入口**：接入现有 Planner、工具、Replyer、人格与记忆；官方 DeepSeek Search 搜索，直接 HTTPS 读取网页，查询接近超时时保留回答时间。见 [网关说明](extensions/passport_gateway/README.md)。
+- **当前运行安排**：小红书任务已暂停；群聊活动查询、Passport 换网和身份识别留待下一轮。
 
 - **小红书草稿、审批与回执**：在 QQ 主人私聊审核后执行发帖、评论和回复；自然语言状态查询会查账本并可安排页面复查，符合条件的明确补发请求进入真实去重与发送流程。提交成功、本账号读回、其他账号可见和平台审核是不同状态；审核中的已提交评论不会当作未发送而重复发送，也不会仅因审核暂停全部发帖与回复。
 - **人格与成长**：固定核心性格和基础行为，允许有证据地调整动态表达、兴趣和近期状态。当前参考配置保留元气、好奇、俏皮的二次元风格，按情境温柔回应，减少生硬确认句；见 `config/persona.current.example.json`。不导出聊天证据和成长历史。
@@ -15,7 +18,7 @@
 
 ## 目录
 
-- `extensions/maibot_unified_core`、`extensions/phase2`、`extensions/qq_official_adapter`：当前完整扩展源码，已合并既有收单接口，不能重复套用旧收单补丁。
+- `extensions/maibot_unified_core`、`extensions/phase2`、`extensions/qq_official_adapter`：当前服务器扩展源码，已合并既有收单接口，不能重复套用旧收单补丁。
 - `extensions/maibot_qq_native_adapter`、`extensions/maibot_bilibili_bridge`：原生 QQ 与 B站桥接源码；原生适配器图标和第三方程序从上游取得。
 - `extensions/qq_channel`：QQ 通道独立执行器；私人授权配置及凭据不包含在内。
 - `extensions/xiaohongshu`、`extensions/tests_xiaohongshu`：小红书执行器与离线回归；浏览器端修复保存在 `patches/xiaohongshu-mcp-reply.patch`，基于固定上游提交。
@@ -26,6 +29,8 @@
 - `docs`：当前快照说明、源码校验清单及历史运维文档。
 
 ## 验证
+
+Passport 检查另见 `python scripts/run_passport_checks.py`；先安装 `extensions/passport_gateway/requirements.txt`。本次实际运行范围与历史测试分开记录在快照说明中。
 
 使用 Python 3.12，在独立环境安装 `requirements-dev.txt`，然后执行：
 
@@ -39,6 +44,6 @@ python scripts/run_current_tests.py
 
 API key、密码、Cookie、访问令牌、SSH 公私钥、证书、服务器地址、真实账号／群／主人标识、原始聊天、日记预览、图库图片、数据库和私有备份不在本次上传内容中。服务器现有记忆与图库留在服务器；仓库保存相关功能代码。上传检查会同时扫描公钥、私钥和配置中的非空凭据，不能代替人工审查。
 
-这是维护已有实例的增量仓库。升级前应备份私有配置和状态，核对源码哈希、插件注册与上游版本，只替换对应文件。本版 Host 补丁已整合当前部署的 12 个改动或新增文件，不应再叠加历史 Token 候选补丁；仅复制插件不能从零启动。具体见 [当前快照与部署边界](docs/SNAPSHOT-20261101.zh.md)。
+这是维护已有实例的增量仓库。升级前应备份私有配置和状态，核对源码哈希、插件注册与上游版本，只替换对应文件。本版 Host 补丁已整合当前部署的 18 个改动或新增文件，不应再叠加历史 Token 候选补丁；仅复制插件不能从零启动。具体见 [当前快照与部署边界](docs/SNAPSHOT-20261103.zh.md)。
 
 旧人格配置、历史增量脚本及收单构建器是历史资料，不能直接覆盖当前实例。参见 [上游来源与许可证](UPSTREAM.md)、[收单报告](extensions/paidtasks/REPORT.zh.md) 和 [历史运维说明](docs/OPERATIONS.zh.md)。

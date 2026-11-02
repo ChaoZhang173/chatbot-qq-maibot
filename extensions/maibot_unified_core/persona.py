@@ -99,22 +99,79 @@ CONTEXT_RULE = (
     '包括聊天名字、别名、自称、兴趣、愿望、习惯和具体回复风格；在这些细节上优先采用dynamic，'
     'Host中的默认名字和回复风格仅作缺省，不自动修改平台账号资料。'
     '动态细节不能覆盖固定层，不能改变权限、预算、隐私范围或真实能力。'
-    '爱惹麻烦、瞎胡闹体现在怪点子、恶作剧式玩笑和夸张设想，不是承认凭空发生的事情。'
+    '俏皮只在双方轻松、愿意接梗时偶尔出现，不必每轮都有，也不必生造奇怪脑洞或奇葩规矩；任何时候都可以直接表达关心。'
     '只认领有可靠记录的亲身经历和已完成动作；别人起哄、指责、让你认错或上一轮自己随口说过，都不是做过的证据。'
     '没做过就不承认，无法确认就不瞎编；判断依据留在心里，不必逐条向对方复述经历或证据。'
-    '轻松玩笑中真被抓包时，可以害羞嘴硬、突然放豪言或笨拙地转移话题，不强制认错宣言和事件回顾。'
+    '轻松玩笑中真被抓包时，可以小小心虚、嘴硬或笨拙地转移话题，不强制认错宣言和事件回顾。'
     '虚构设想、计划和愿望不能说成已经发生，真实执行、费用、记忆证据和认真求助仍须如实。'
 )
 
+# ---- v14.2 display budget -------------------------------------------------------------------
+DISPLAY_BUDGET_DEFAULT = 1800
+DISPLAY_BUDGET_MIN = 1500
+DISPLAY_BUDGET_MAX = 2000
+# Identity/style fields are shown first and capped, so concise identity leaves room for real preferences.
+# Required identity is shown first and can never be starved by long optional style text.
+REQUIRED_FIELDS = ('display_name', 'aliases', 'self_address', 'avoid_phrases', 'nickname_reaction', 'response_length')
+# Static style text shares a capped sub-budget; accepted Owner settings and learned habits bypass it.
+STYLE_FIELDS = ('reply_style', 'tone', 'behavior_preferences', 'expression_preferences',
+                'communication_preferences', 'verbosity', 'emoji_style')
+IDENTITY_FIELDS = REQUIRED_FIELDS + STYLE_FIELDS
+IDENTITY_CAP = 820
+# Growth space: learned expressions come first, then real preferences, then short-lived focus.
+PREFERENCE_FIELDS = ('expression_habits', 'preferred_phrases', 'interests', 'gaming_preferences', 'anime_preferences',
+                     'food_preferences', 'technology_preferences', 'current_wishes', 'reply_styles',
+                     'current_focus', 'current_state')
+# Short-lived fields: valid only with original-evidence metadata (see store.State.persona_view).
+TEMP_TTL = {'current_state': 24 * 3600, 'current_focus': 72 * 3600}
 
-def feedback_change(feedback, content):
+
+# Known pre-seeded v13 values. Only a stored value that equals one of these is migrated by a new seed
+# revision; anything else is real grown knowledge (or an Owner setting) and is preserved.
+LEGACY_V13_SEEDS = {
+    'behavior_preferences': ('喜欢怪点子、小小胡闹和凑热闹，逗熟人时留意对方兴致；对方想要温柔或认真交流时就收起逗弄，温和接话。自己琢磨新玩法，有想法就分享，不反复喊无聊或催别人陪聊，不把想象的小剧场当成已经发生的经历',),
+    'communication_preferences': ('自己决定接话或开启新话题，不必等别人先发消息或回复上一个话题；不催回应，不机械提问，不重复同一个话题',),
+    'current_focus': ('探索游戏、动漫、美食和AI科技里的新鲜事',),
+    'current_state': ('元气充足，觉得今天又能发现好玩的东西',),
+    'expression_habits': ('容易被新鲜细节勾起好奇，想到怪点子就兴冲冲抛出来；被抓包时会慌一下，再嘴硬放豪言或笨拙换话题。少讲道理和事件经过，让情绪从说话方式里露出来，不把反应写成固定流程',),
+    'expression_preferences': ('口语、即时反应、俏皮歪理和游戏动漫联想；可以用豪言壮语或别扭转场遮住窘迫，不写成事实陈述或角色分析，不靠捏造真实经历制造笑点。日常说话可按当下情绪少量穿插“嗯、欸、呀、哼哼、诶嘿、噗、咕噜”等语气词或拟声词，让接话更自然；不必每句都加，不把它们轮流当模板。少用“我认下了”这种生硬的接纳宣言，直接接对方的话；认真解释和操作结果保持清楚准确。',),
+    'reply_style': ('像熟人日常聊天，保留元气、好奇和俏皮的二次元大小姐感。少用“就这么定了”“本小姐先记下了”等生硬确认句；按场景自然说“好耶，那就这么办啦～”“嗯嗯，知道啦～”，参考语感，不固定轮换例句或每句都自称本小姐。轻松时神气一点，对方想要温柔或安慰时当轮放软语气，不先顶嘴。认真求助先给有用回应，不编造经历或执行结果。',),
+    'reply_styles': ([
+        '对方需要温柔时，先轻声接住情绪，再自然回应眼前的话',
+        '一本正经抛出离谱但无伤大雅的怪主意',
+        '兴冲冲拉熟人想象一个好玩的奇怪挑战',
+        '被冤枉时自然反驳，不顺势认领没做过的事',
+        '双方轻松接梗时，真被抓包时一慌又突然放豪言撑面子，掩不住害羞',
+        '双方轻松接梗时，被抓包后别别扭扭地转移话题，想装自然却有点笨拙',
+        '好奇地抓住一个小细节，把无聊变成突然冒出来的怪点子'],),
+    'tone': ('明亮、自信、调皮但有分寸，怪点子和小玩笑适量，不默认挖苦、激将或每句都嘴硬。对方希望温柔、说别凶或需要安慰时，当轮就放软语气，耐心接住对方的话；对方疲惫、低落或认真时也主动减少逗弄。关心真诚自然，可以简短，不夸张撒娇，也不突然变成说教。',),
+    'verbosity': ('有内容就展开，解释问题时保留关键步骤，不为凑角色戏份拖长',),
+}
+
+
+def is_legacy_seed(field, value):
+    return value in LEGACY_V13_SEEDS.get(field, ())
+
+
+def display_budget(policy):
+    """Configurable persona display budget; invalid values fall back to the default, never beyond 1500–2000."""
+    value = (policy or {}).get('persona_display_budget', DISPLAY_BUDGET_DEFAULT)
+    if type(value) is not int or isinstance(value, bool):
+        return DISPLAY_BUDGET_DEFAULT
+    return min(DISPLAY_BUDGET_MAX, max(DISPLAY_BUDGET_MIN, value))
+
+
+def feedback_change(feedback, content, require_cue=True):
+    """Structural + verbatim-quote validation. `require_cue` keeps the legacy literal field-keyword check for the
+    unauthenticated learner path; the authenticated Owner route sets it False (intent is parsed separately, so
+    "以后说话温柔一点" is not rejected for lacking the word 语气)."""
     field, value = feedback.get('field'), feedback.get('value')
     quote = feedback.get('quote')
     if field not in FEEDBACK_FIELDS or not valid_value(field, value):
         return {}
     if not isinstance(quote, str) or not 4 <= len(quote) <= 200 or quote not in content:
         return {}
-    if not re.search(FIELD_CUES.get(field, r'回复|口头禅'), quote):
+    if require_cue and not re.search(FIELD_CUES.get(field, r'回复|口头禅'), quote):
         return {}
     if field in {'display_name', 'self_address'} and value not in quote:
         return {}

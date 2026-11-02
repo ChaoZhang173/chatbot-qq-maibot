@@ -72,6 +72,15 @@ class CoreClient:
     def activity(self, action):
         return self._call({'op': 'xhs_activity', 'action': action})
 
+    # ---- curiosity exploration: the core grants/limits opportunities; the executor searches and reads ----
+    def explore_claim(self):
+        task = self._call({'op': 'xhs_explore_claim'}).get('task')
+        return task if isinstance(task, dict) and isinstance(task.get('query'), str) and isinstance(task.get('task_key'), str) else None
+
+    def explore_report(self, task_key, outcome, searches, reads, content_ids):
+        return self._call({'op': 'xhs_explore_report', 'task_key': task_key, 'outcome': outcome, 'searches': searches,
+                           'reads': reads, 'content_ids': list(content_ids)[:2]})
+
     # ---- owner-review drafts: the executor can submit, claim an approved one, report. It cannot approve. ----
     def draft_submit(self, draft):
         answer = self._call({'op': 'xhs_draft_submit', 'draft': draft})
