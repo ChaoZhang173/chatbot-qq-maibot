@@ -111,11 +111,20 @@ class FakeCtx:
         self.llm = FakeLLM()
         self.person = FakePerson()
         self.voice_host = FakeVoiceHost()
+        self.opened: list[dict] = []
+        self.open_fail = False
         self.logger = type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})()
 
     async def call_capability(self, name, operation=None, timeout_ms=None, **kw):
         if name == "unified.voice":
             return await self.voice_host.call(operation, **kw)
+        if name == "chat.open_session":
+            # The Host's capability, faked at its RPC boundary (the real handler is exercised by host_tests/).
+            self.opened.append(dict(kw))
+            if self.open_fail:
+                return {"success": False, "error": "boom"}
+            return {"success": True, "stream": {"session_id": "pp-session:" + kw["user_id"], "platform": kw["platform"],
+                    "user_id": kw["user_id"], "scope": kw["scope"] or None, "is_group_session": False}}
         assert name == "unified.memory"
         return self.memory.call(operation, **kw)
 

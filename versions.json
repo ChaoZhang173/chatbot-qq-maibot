@@ -12,6 +12,8 @@
   "persona_reference_version": "14.2",
   "xiaohongshu_mcp_commit": "7797fd375aba02dcd33afe143f6bee13e5870859",
   "xiaohongshu_mcp_patch": "patches/xiaohongshu-mcp-reply.patch",
-  "passport_backend_revision": "full-entry-r17",
-  "passport_gateway_path": "extensions/passport_gateway"
+  "passport_backend_revision": "identity-memory-context-5000-r1",
+  "passport_gateway_path": "extensions/passport_gateway",
+  "context_block_max_chars": 5000,
+  "persona_display_budget": 1800
 }

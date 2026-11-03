@@ -986,7 +986,7 @@
          if backoff_seconds <= 0:
 --- /dev/null
 +++ b/src/maisaka/voice_context.py
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,87 @@
 +"""Host-owned, task-local origin of one Passport voice turn.
 +
 +Nothing here changes a platform sender. The origin is a ContextVar set only by the authenticated
@@ -1011,6 +1011,9 @@
 +    message_id: str
 +    deadline: float
 +    runtime: Any = None
++    # None = the owner route (full registry, unchanged). A frozenset = a restricted (friend/profile) route: the Host
++    # tool dispatch point refuses every other tool (see voice_entry.RestrictedRegistry).
++    tool_allowlist: Any = None
 +    replies: list = field(default_factory=list)
 +    tools: list = field(default_factory=list)
 +    closed: bool = False
@@ -1073,7 +1076,7 @@
 +        origin.tools.append({'name': str(invocation.tool_name)[:64], 'success': bool(result.success)})
 --- /dev/null
 +++ b/src/maisaka/voice_entry.py
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,254 @@
 +"""One device-origin (Passport voice) turn through the Host's real Maisaka engine.
 +
 +The per-turn runtime is a subclass of the real MaisakaHeartFlowChatting: same session identity, persona hooks,
@@ -1116,17 +1119,82 @@
 +            async def _trigger_trimmed_history_learning(self, *args, **kwargs):
 +                pass
 +
++            def _register_tool_providers(self):
++                super()._register_tool_providers()
++                origin = CURRENT.get()
++                if origin is not None and origin.tool_allowlist is not None:
++                    restricted = RestrictedRegistry(self._tool_registry, origin.tool_allowlist)
++                    self._tool_registry = restricted
++                    self._chat_loop_service.set_tool_registry(restricted)
++
 +        _runtime_class = VoiceRuntime
 +    return _runtime_class
 +
 +
++PASSPORT_PLATFORM = 'passport'
++PASSPORT_SCOPE = 'passport'
++TRUSTED_PLUGIN = 'local.unified-core'
++
++
 +def _identity_ok(stream, args):
-+    if stream is None or stream.platform != 'qq' or stream.is_group_session:
++    if stream is None or stream.is_group_session:
++        return False
++    if args.get('kind', 'owner') == 'passport':
++        # Passport-native person: a real Host private session of platform 'passport' (never a forged QQ account).
++        if stream.platform != PASSPORT_PLATFORM or stream.scope != PASSPORT_SCOPE:
++            return False
++    elif stream.platform != 'qq':
 +        return False
 +    if str(stream.user_id) != args['owner_id']:
 +        return False
 +    # The session's account is the bot account the QQ adapter received on; verify it only when present.
 +    return not stream.account_id or str(stream.account_id) == args['account_id']
++
++
++class RestrictedRegistry:
++    """Allowlist proxy over the per-turn ToolRegistry for friend/profile routes.
++
++    Enforced where tools are LISTED (planner definitions, sub-agent grants, tool_search) and where they are INVOKED, so a
++    model that names an unlisted tool is refused here. A name alone is not enough: builtin names must come from the
++    builtin provider and plugin names from the one trusted plugin, so an MCP/agent tool can never take an allowed name."""
++
++    def __init__(self, inner, allowed):
++        self._inner = inner
++        self._allowed = frozenset(allowed)
++
++    def _permitted(self, spec):
++        kind = getattr(spec, 'provider_type', '')
++        if spec.name not in self._allowed:
++            return False
++        return kind == 'builtin' or (kind == 'plugin' and (spec.metadata or {}).get('plugin_id') == TRUSTED_PLUGIN)
++
++    async def list_tools(self, context=None):
++        return [spec for spec in await self._inner.list_tools(context) if self._permitted(spec)]
++
++    async def get_tool_spec(self, tool_name, context=None):
++        spec = await self._inner.get_tool_spec(tool_name, context)
++        return spec if spec is not None and self._permitted(spec) else None
++
++    async def has_tool(self, tool_name, context=None):
++        return await self.get_tool_spec(tool_name, context) is not None
++
++    async def get_llm_definitions(self, context=None):
++        return [spec.to_llm_definition() for spec in await self.list_tools(context)]
++
++    async def invoke(self, invocation, context=None):
++        from src.core.tooling import ToolAvailabilityContext, ToolExecutionResult
++        availability = None
++        if context is not None:
++            availability = ToolAvailabilityContext(
++                session_id=context.session_id, stream_id=context.stream_id, is_group_chat=context.is_group_chat,
++                group_id=context.group_id, user_id=context.user_id, platform=context.platform)
++        if await self.get_tool_spec(invocation.tool_name, availability) is None:
++            return ToolExecutionResult(tool_name=invocation.tool_name, success=False,
++                                       error_message='tool_not_permitted_for_this_profile')
++        return await self._inner.invoke(invocation, context)
++
++    def __getattr__(self, name):
++        return getattr(self._inner, name)
 +
 +
 +async def _wait_qq_idle(session_id):
@@ -1177,23 +1245,28 @@
 +    stream = await asyncio.to_thread(chat_manager.get_existing_session_by_session_id, args['session_id'])
 +    if not _identity_ok(stream, args):
 +        raise PermissionError('voice_session_identity_mismatch')
-+    if not await heartflow_manager._is_session_allowed(stream):
-+        raise PermissionError('voice_adapter_policy_denied')
-+    # The owner's ordinary QQ runtime is long-lived and its tasks inherit the CURRENT context of whoever creates it
-+    # (e.g. an agent tool's get_or_create_heartflow_chat). Make sure it exists NOW, outside any voice context, through
-+    # the real manager (same allow-list/start path as the first QQ message; no message is injected, nothing is sent).
-+    # An already-running runtime is simply returned. Failure ends the turn before any voice work.
-+    try:
-+        await heartflow_manager.get_or_create_heartflow_chat(args['session_id'])
-+    except PermissionError:
-+        raise PermissionError('voice_adapter_policy_denied') from None
-+    except Exception as exc:
-+        logger.warning(f'owner QQ runtime unavailable: {type(exc).__name__}')
-+        raise RuntimeError('voice_qq_runtime_unavailable') from None
-+    if not await _wait_qq_idle(args['session_id']):
-+        raise RuntimeError('voice_busy')
++    kind = args.get('kind', 'owner')
++    if kind != 'passport':
++        if not await heartflow_manager._is_session_allowed(stream):
++            raise PermissionError('voice_adapter_policy_denied')
++        # The person's ordinary QQ runtime is long-lived and its tasks inherit the CURRENT context of whoever creates it
++        # (e.g. an agent tool's get_or_create_heartflow_chat). Make sure it exists NOW, outside any voice context, through
++        # the real manager (same allow-list/start path as the first QQ message; no message is injected, nothing is sent).
++        # An already-running runtime is simply returned. Failure ends the turn before any voice work.
++        try:
++            await heartflow_manager.get_or_create_heartflow_chat(args['session_id'])
++        except PermissionError:
++            raise PermissionError('voice_adapter_policy_denied') from None
++        except Exception as exc:
++            logger.warning(f'owner QQ runtime unavailable: {type(exc).__name__}')
++            raise RuntimeError('voice_qq_runtime_unavailable') from None
++        if not await _wait_qq_idle(args['session_id']):
++            raise RuntimeError('voice_busy')
++    # A Passport-native session has no QQ runtime, no platform adapter and nothing to send through: its only delivery
++    # is the voice origin below, so no adapter allow-list or QQ idle wait applies to it.
 +
-+    origin = VoiceOrigin(args['key'], args['session_id'], 'device-voice:' + args['key'], deadline)
++    origin = VoiceOrigin(args['key'], args['session_id'], 'device-voice:' + args['key'], deadline,
++                         tool_allowlist=frozenset(args['tool_allowlist']) if 'tool_allowlist' in args else None)
 +    started = time.monotonic()
 +    token = CURRENT.set(origin)
 +    runtime = None
@@ -1216,12 +1289,17 @@
 +                timestamp=datetime.now(), message_id='voice-history:' + args['key'],
 +                source_kind='device_voice_history'))
 +        message = SessionMessage(message_id=origin.message_id, timestamp=datetime.now(),
-+                                 received_at=datetime.now(), platform='qq')
++                                 received_at=datetime.now(), platform=stream.platform)
 +        message.session_id = args['session_id']
 +        message.account_id = args['account_id']
 +        message.scope = stream.scope        # the session's own scope (NULL for the production owner session)
 +        message.message_info = MessageInfo(
-+            user_info=UserInfo(user_id=args['owner_id'], user_nickname=stream.user_nickname or '主人'),
++            # Spoken address: the explicit preference first (Passport voice only; this message and the copied stream are
++            # never written back, so the real QQ nickname/account and QQ chats are untouched). Presentation only - the
++            # role was decided by the server and is not derived from this text.
++            user_info=UserInfo(user_id=args['owner_id'],
++                               user_nickname=args.get('preferred_address') or stream.user_nickname
++                               or ('主人' if kind == 'owner' else '用户')),
 +            additional_config={'channel': 'device_voice', 'origin': 'passport', 'voice_turn_key': args['key']})
 +        message.raw_message = MessageSequence([TextComponent(args['text'])])
 +        message.processed_plain_text = args['text']
@@ -1755,7 +1833,7 @@
 +    raise ValueError("unsupported_unified_memory_operation")
 --- /dev/null
 +++ b/src/plugin_runtime/capabilities/unified_voice.py
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,111 @@
 +"""Authenticated, plugin-scoped Host capability: one Passport voice turn through the real Maisaka pipeline.
 +
 +Registered next to `unified.memory`; AuthorizationManager only lets a plugin call it if its manifest lists
@@ -1768,8 +1846,13 @@
 +import time
 +
 +PLUGIN_ID = 'local.unified-core'
-+MAX_CONCURRENT = 2
++MAX_CONCURRENT = 3
++MAX_FRIEND = 2        # restricted (friend/profile) turns can never take the last slot: the owner keeps one
++KINDS = ('owner', 'qq_linked', 'passport')
++TOOL_NAME_RE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
++ADDRESS_RE = re.compile(r'^[\w\u4e00-\u9fff\u00b7 -]{1,16}$')
 +_active = {}          # key -> asyncio.Task (one per running turn)
++_restricted = set()   # keys of running friend/profile turns
 +_sessions = {}        # session_id -> asyncio.Lock (voice turns for one owner session never run concurrently)
 +
 +
@@ -1795,12 +1878,26 @@
 +        if task is not None and not task.done():
 +            task.cancel()
 +        return {'cancel_requested': task is not None}
-+    if args.get('operation') != 'run' or set(args) != {
-+            'operation', 'key', 'session_id', 'owner_id', 'account_id', 'text', 'history', 'timeout_s'}:
++    base = {'operation', 'key', 'session_id', 'owner_id', 'account_id', 'text', 'history', 'timeout_s'}
++    if args.get('operation') != 'run' or not base <= set(args) <= base | {'kind', 'preferred_address', 'tool_allowlist'}:
 +        raise ValueError('voice_arguments')
++    kind = args.get('kind', 'owner')
++    if kind not in KINDS:
++        raise ValueError('voice_kind')
++    if 'preferred_address' in args and (not isinstance(args['preferred_address'], str)
++                                        or not ADDRESS_RE.match(args['preferred_address'])):
++        raise ValueError('voice_preferred_address')
++    allowlist = args.get('tool_allowlist')
++    if kind == 'owner':
++        if allowlist is not None:
++            raise ValueError('voice_owner_allowlist')       # the owner route is the unrestricted one
++    elif (not isinstance(allowlist, list) or not 1 <= len(allowlist) <= 32
++          or any(not isinstance(name, str) or not TOOL_NAME_RE.match(name) for name in allowlist)):
++        raise ValueError('voice_tool_allowlist')            # a restricted route without an allowlist is refused
 +    if key in _active:
 +        raise ValueError('voice_already_running')
-+    if len(_active) >= MAX_CONCURRENT:
++    restricted = kind != 'owner'
++    if len(_active) >= MAX_CONCURRENT or (restricted and len(_restricted) >= MAX_FRIEND):
 +        return {'success': False, 'error': 'voice_busy'}      # nothing started; the caller may retry
 +    for name, maximum in (('session_id', 256), ('owner_id', 256), ('account_id', 256), ('text', 1000)):
 +        _text(args, name, maximum)
@@ -1827,6 +1924,8 @@
 +
 +    task = asyncio.create_task(guarded())
 +    _active[key] = task
++    if restricted:
++        _restricted.add(key)
 +    try:
 +        return await asyncio.wait_for(task, max(0.01, deadline - time.monotonic()))
 +    except asyncio.TimeoutError:
@@ -1843,6 +1942,7 @@
 +    finally:
 +        if _active.get(key) is task:
 +            _active.pop(key, None)
++        _restricted.discard(key)
 +        if not task.done():
 +            task.cancel()
 --- a/src/plugin_runtime/component_query.py

@@ -69,7 +69,8 @@ def parse_response(raw: bytes) -> VoiceReply:
             raise BackendError("brain_timeout", error)
         if error == "voice_busy":
             raise BackendError("busy", error)
-        if error in ("voice_unbound", "voice_disabled"):
+        if error in ("voice_unbound", "voice_disabled", "voice_binding_changed"):
+            # not bound / bound to someone else now / authority changed during the turn: all look the same to the device
             raise BackendError("backend_unbound", error)
         if error in ("peer_denied", "admin_only", "unsupported_operation"):
             raise BackendError("internal", error)

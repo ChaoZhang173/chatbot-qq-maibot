@@ -53,11 +53,11 @@
   },
   "src/maisaka/voice_context.py": {
     "upstream_sha256": null,
-    "deployed_sha256": "6390183b01dd4b3af25df9b4d0dce971f69335141300fac591ea2fe26cb4ddd0"
+    "deployed_sha256": "a4599077cf1e30e586c2fc9fba2b3e69e4c1f22f5ceaeec4486b1bf9b5a23af1"
   },
   "src/maisaka/voice_entry.py": {
     "upstream_sha256": null,
-    "deployed_sha256": "0ed124a992d4d843761e106361f2c53056b70349e7c261b41ab066892ae1f527"
+    "deployed_sha256": "9af140dd7e421e43ac0c32987067f55b021fd08017bb4f217feb80244b4b22d5"
   },
   "src/plugin_runtime/capabilities/unified_memory.py": {
     "upstream_sha256": null,
@@ -65,7 +65,7 @@
   },
   "src/plugin_runtime/capabilities/unified_voice.py": {
     "upstream_sha256": null,
-    "deployed_sha256": "211e3f8cddf78f11fcc9012bc2d8b44d6ab2fe2236b996264141e8d740f3bad8"
+    "deployed_sha256": "949902244809f8322f82028a50f7dfe2e6edf2ed0d5b75a34855bc20b624c9e7"
   },
   "src/services/person_fact_dedup.py": {
     "upstream_sha256": null,

@@ -2,8 +2,6 @@
 import asyncio
 import json
 import os
-import sys
-import unittest
 
 from maibot_unified_core.voice import REFUSAL
 
@@ -41,7 +39,6 @@ class PeerBoundaryTests(BackendCase):
             self.svc.authorize_peer(os.getuid(), "voice_turn")
         self.assertIn("voice_uid_not_distinct", str(cm.exception))
 
-    @unittest.skipUnless(sys.platform == "linux", "Linux peer-credential socket contract")
     async def test_end_to_end_through_the_ipc_handler(self):
         """Real Unix socket + the real handle(): SO_PEERCRED uid is ours, so make that the voice uid."""
         self.policy["voice_uid"] = os.getuid() + 1                 # a different uid for the "gateway"
@@ -438,7 +435,6 @@ class RelationshipTests(BackendCase):
         self.assertEqual(dict(self.svc.last_message), {})                               # nothing fabricated
 
 
-@unittest.skipUnless(sys.platform == "linux", "Linux setfacl contract")
 class SocketAclTests(BackendCase):
     """grant_voice_socket_access: a narrow setfacl for voice_uid only, beside (not instead of) the XHS grant."""
 

@@ -137,5 +137,7 @@
   "voice_enabled": false,
   "voice_uid": -1,
   "xhs_manual_mode": true,
-  "xhs_manual_proactive": false
+  "xhs_manual_proactive": false,
+  "qq_group_recall_shared_enabled": false,
+  "passport_qq_number_evidence": {}
 }

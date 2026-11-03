@@ -203,7 +203,7 @@ def fetch(url):
 
 async def run(service,operation,value,session):
     """Trusted QQ entry: only an authorized QQ session may use it."""
-    if (service.policy.get('web_enabled') is not True or session not in service.policy.get('allowed_qq_sessions',[])):
+    if (service.policy.get('web_enabled') is not True or not service.session_platform(session)):
         return {'success':False,'error':'当前会话未开启联网'}
     return await read_public(service,operation,value)
 

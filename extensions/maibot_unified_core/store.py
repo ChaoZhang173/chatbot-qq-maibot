@@ -509,6 +509,13 @@ class State:
             account = self._bot_account(source_platform)
             return bool(account) and str(s.get("bot_account_id", "")) == account
         if source_platform == target_platform == "qq":
+            # Public group conversations are the bot's shared experiences when
+            # explicitly enabled by its owner. Private sources were rejected above.
+            if (self.policy.get("qq_group_recall_shared_enabled") is True
+                    and source_conversation in (self.policy.get("qq_group_sessions") or {}).values()
+                    and source_conversation in self.policy.get("allowed_qq_sessions", [])
+                    and target_conversation in self.policy.get("allowed_qq_sessions", [])):
+                return True
             groups = self.policy.get("shared_groups", [])
             if groups and all(isinstance(item, str) for item in groups):
                 groups = [groups]

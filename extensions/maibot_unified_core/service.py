@@ -8,6 +8,7 @@ from .store import HOST_PERSONA_FIELDS, State, abstract_topic_summary
 from . import persona as character
 from . import content_rules
 from . import context_layers
+from . import conversation_recall
 from . import feedback as feedback_mod
 from . import impressions
 from . import v14_2
@@ -57,6 +58,8 @@ class UnifiedService:
         self.qq_proactive=None;self.qq_proactive_worker=None
         self.xhs_review=None;self.xhs_review_worker=None
         self.daily=None;self.exploration=None;self.feedback_tasks=set()
+        from .voice import VoiceBridge
+        self.voice=VoiceBridge(self)
 
     def reload_policy(self):
         self.policy=json.loads((self.root/'policy.json').read_text())
@@ -774,17 +777,17 @@ class UnifiedService:
         self.reload_policy()
         persona=self.state.persona_view();facts=[];source_ids=[]
         # Query each explicitly allowed source. Never use unscoped global search.
-        chats={conversation_id}
-        if platform=='qq':
-            for group in self.policy.get('shared_groups',[]):
-                if conversation_id in group:chats.update(group)
-        else:chats.update(self.policy.get('public_qq_sessions',[]))
-        chats.add('bilibili:public')
+        chats=(conversation_recall.sessions(self,conversation_id) if platform=='qq'
+               else [conversation_id,*self.policy.get('public_qq_sessions',[])])
+        chats=list(dict.fromkeys([*chats,'bilibili:public']))
         query=str(query or '最近共同经历 兴趣 游戏 AI 美食')[:400]
         memory_ok=True
-        for chat in sorted(chats):
+        async def search_chat(chat):
+            return await asyncio.wait_for(self.memory('search',query=query,chat_id=chat,limit=6),1.8)
+        searches=await asyncio.gather(*(search_chat(chat) for chat in chats),return_exceptions=True)
+        for result in searches:
             try:
-                result=await self.memory('search',query=query,chat_id=chat,limit=6)
+                if isinstance(result,BaseException):raise RuntimeError('memory_search_unavailable')
                 memory_ok=memory_ok and result.get('success',True)
                 for h in result.get('hits',[]):
                     if self.is_relationship_hit(h):continue  # only the scoped table feeds relationship preferences
@@ -806,6 +809,8 @@ class UnifiedService:
         safe_activities.extend(reads)
         source_ids.extend(x['event_id'] for x in reads)
         result={'persona':persona,'facts':facts[:8],'activities':safe_activities,'source_ids':source_ids[:25],'memory_available':memory_ok,'platform':platform,'purpose':purpose}
+        result['conversation_records']=conversation_recall.records(self,platform,conversation_id,query,purpose)
+        result['source_ids']+= [x['source_id'] for x in result['conversation_records']]
         relationship=self.relationship_texts(platform,conversation_id)
         if relationship:result['relationship']=relationship
         self.state.audit_context(task,platform,conversation_id,result['source_ids'],persona.get('version'),permissions=[],model_task='replyer')
@@ -855,6 +860,11 @@ class UnifiedService:
         native=results[1] if isinstance(results[1],dict) else {'expressions':[],'jargon':[]}
         profiles=results[2] if isinstance(results[2],list) else []
         if session_id not in self.policy.get('allowed_qq_sessions',[]):return ''
+        # Read direct evidence on every prompt, even after semantic timeout or a
+        # cache hit: voice writes do not advance the Host's QQ message counter.
+        result=dict(result)
+        result['conversation_records']=conversation_recall.records(self,'qq',session_id,query)
+        result['source_ids']=list(dict.fromkeys(result.get('source_ids',[])+[x['source_id'] for x in result['conversation_records']]))
         from . import compact_context,receipts
         report=self.receipt_requested(session_id)
         budget=character.display_budget(self.policy)
@@ -864,11 +874,12 @@ class UnifiedService:
         rule=(character.CONTEXT_RULE if character.expanded(self.policy) else '')+'\n'+content_rules.RULE+'\n'+receipts.RULE
         rule+=self.qq_reply_policy_context(session_id)
         if self.commands and self.commands.allowed_session(session_id):rule+=self.commands.context(session_id)
-        if self.private_access and session_id in self.private_access.sessions():rule+='\n本私聊只使用允许的私聊记忆，不向群聊公开。'
+        if self.private_access and session_id in self.private_access.sessions():rule+='\n本私聊可回忆已接入群聊的共同经历和当前QQ、Passport对话。' if self.policy.get('qq_group_recall_shared_enabled') else '\n本私聊只使用允许的私聊记忆。'
         if self.media:rule+=self.media.context(session_id)
         rule+='\n需要更多记忆时用unified_memory；查经历用unified_activity。图片可用gallery_save/search/send/remove管理100张个人图库，收藏理由须来自自己的喜好。'
         if self.policy.get('web_enabled'):rule+='\n最新/不确定事实用public_web_search/read查证并附来源。'
         rule+='\n记忆候选按情景使用，不机械复述；不公开不相关的跨群身份细节。'
+        rule+='\n'+conversation_recall.RULE
         # Outer budget includes the configured persona budget, so the larger persona payload is not silently cut here.
         text=compact_context.render(rule,payload,4200+max(0,budget-1000))
         self.state.put('context_input_metrics:'+session_id,{'at':time.time(),'chars':len(text),'task':'qq','persona_version':version})
@@ -877,16 +888,17 @@ class UnifiedService:
     def layer_authorization_fingerprint(self,session_id):
         private=bool(self.private_access and session_id in self.private_access.sessions())
         return ident(sorted(self.policy.get('allowed_qq_sessions',[])),self.policy.get('shared_groups',[]),
+                     self.policy.get('qq_group_recall_shared_enabled',False),self.policy.get('qq_group_sessions',{}),
                      str(self.policy.get('qq_bot_account','')),private,self.state.get('policy_revision',0))
 
     def layer_stable_text(self,session_id):
         """稳定规则：不含逐消息资格、说话者、query；同一策略下字节一致。"""
         from . import receipts
         text=(character.CONTEXT_RULE if character.expanded(self.policy) else '')+'\n'+content_rules.RULE+'\n'+receipts.RULE
-        if self.private_access and session_id in self.private_access.sessions():text+='\n本私聊只使用允许的私聊记忆，不向群聊公开。'
+        if self.private_access and session_id in self.private_access.sessions():text+='\n本私聊可回忆已接入群聊的共同经历和当前QQ、Passport对话。' if self.policy.get('qq_group_recall_shared_enabled') else '\n本私聊只使用允许的私聊记忆。'
         text+='\n需要更多记忆时用unified_memory；查经历用unified_activity。图片可用gallery_save/search/send/remove管理100张个人图库，收藏理由须来自自己的喜好。'
         if self.policy.get('web_enabled'):text+='\n最新/不确定事实用public_web_search/read查证并附来源。'
-        return text+'\n记忆候选按情景使用，不机械复述；不公开不相关的跨群身份细节。'
+        return text+'\n记忆候选按情景使用，不机械复述；不公开不相关的跨群身份细节。\n'+conversation_recall.RULE
 
     async def qq_context_layers(self,session_id):
         """实验路径。返回 None=回到旧的 qq_context；{}=无授权不注入；否则 stable/snapshot/dynamic 文本。
@@ -922,6 +934,9 @@ class UnifiedService:
                 while len(self.layer_dynamic_cache)>256:self.layer_dynamic_cache.pop(next(iter(self.layer_dynamic_cache)))
             result,profiles=results
             if not isinstance(result,dict) or not isinstance(profiles,list):raise ValueError('dynamic_context_unavailable')
+            result=dict(result)
+            result['conversation_records']=conversation_recall.records(self,'qq',session_id,query)
+            result['source_ids']=list(dict.fromkeys(result.get('source_ids',[])+[x['source_id'] for x in result['conversation_records']]))
             # 可发布结果的边界：重新读取当前策略并校验全部版本；不一致则丢弃本次产物，回到实时旧路径。
             if self.layer_boundary(session_id)[3]!=key:raise context_layers.StaleContext()
             if session_id not in self.policy.get('allowed_qq_sessions',[]):return {}
@@ -930,7 +945,7 @@ class UnifiedService:
             header+=self.qq_reply_policy_context(session_id)
             if self.commands and self.commands.allowed_session(session_id):header+=self.commands.context(session_id)
             if self.media:header+=self.media.context(session_id)
-            dynamic=compact_context.render_layer(header,compact_context.dynamic_payload(result,profiles,report=self.receipt_requested(session_id)),2600,('activities','profile_evidence','facts'))
+            dynamic=compact_context.render_layer(header,compact_context.dynamic_payload(result,profiles,report=self.receipt_requested(session_id)),2600,('activities','profile_evidence','facts','conversation_records'))
             sources=list(result.get('source_ids',[]))+[x['source_id'] for x in profiles]
             self.state.audit_context('qq_final_context','qq',session_id,sources,version,model_task='replyer')
             return {'stable':self.layer_stable_text(session_id),'snapshot':snap['text'],'dynamic':dynamic,
@@ -1233,9 +1248,39 @@ class UnifiedService:
         rows.sort(key=lambda x:x['occurred_at'],reverse=True)
         return rows[:limit]
 
+    def session_platform(self,session):
+        """'qq' for an allow-listed QQ session, 'passport' for the Passport-native session of an ENABLED friend profile
+        (authority comes from the identity file, never from allowed_qq_sessions), else '' = not authorised."""
+        if session in self.policy.get('allowed_qq_sessions',[]):return 'qq'
+        voice=getattr(self,'voice',None)
+        return 'passport' if voice and voice.owns_passport_session(session) else ''
+
+    async def passport_context(self,session_id):
+        """Model context for a Passport-native person: persona + ONLY that person's own session memory/records. No shared
+        groups, no QQ replies, no owner rules, no commands/media/gallery text, no Host person profile."""
+        self.reload_policy()
+        if self.session_platform(session_id)!='passport':return ''
+        query=self.last_message.get(session_id,('',None,None))[0]
+        try:result=await asyncio.wait_for(self.build_context('passport_reply','passport',session_id,query),2.5)
+        except Exception:
+            result={'persona':self.state.persona_view(),'facts':[],'activities':[],'source_ids':[],'memory_available':False}
+        result=dict(result)
+        result['conversation_records']=conversation_recall.records(self,'passport',session_id,query)
+        result['source_ids']=list(dict.fromkeys(result.get('source_ids',[])+[x['source_id'] for x in result['conversation_records']]))
+        from . import compact_context,receipts
+        payload=compact_context.payload(result,{'expressions':[],'jargon':[]},[],report=self.receipt_requested(session_id),persona_budget=character.display_budget(self.policy))
+        self.state.audit_context('passport_final_context','passport',session_id,result['source_ids'],result['persona'].get('version'),model_task='replyer')
+        rule=(character.CONTEXT_RULE if character.expanded(self.policy) else '')+'\n'+content_rules.RULE+'\n'+receipts.RULE
+        rule+='\n本对话是这位Passport朋友自己的独立私聊：只使用这里列出的记录，不知道也不谈论主人或其他人的对话与资料。'
+        rule+='\n需要更多记忆时用unified_memory。'
+        if self.policy.get('web_enabled'):rule+='\n最新/不确定事实用public_web_search/read查证并附来源。'
+        rule+='\n'+conversation_recall.RULE
+        return compact_context.render(rule,payload,4200)
+
     async def tool(self,name,kwargs):
         session=str(kwargs.get('session_id') or kwargs.get('stream_id') or '')
-        if session not in self.policy.get('allowed_qq_sessions',[]):return {'success':False,'error':'会话未授权'}
+        platform=self.session_platform(session)
+        if not platform:return {'success':False,'error':'会话未授权'}
         # Model-facing: expired/invalid short-lived fields and their metadata never reappear; raw history is admin-only.
         if name=='persona':return {'success':True,'content':self.state.persona_view()}
         if name=='activity':
@@ -1243,9 +1288,9 @@ class UnifiedService:
             since=None
             if '今天' in query:
                 now=datetime.now(TZ);since=now.replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
-            context={'platform':'qq','conversation_id':session,'purpose':'internal'}
-            return {'success':True,'content':{'actions':self.state.recent_activity(platform=kwargs.get('platform') or None,since=since,limit=12,context=context),'reads':self.recent_reads(platform=kwargs.get('platform') or None,since=since,context=context)}}
-        return {'success':True,'content':await self.build_context('memory_tool','qq',session,str(kwargs.get('query','')))}
+            context={'platform':platform,'conversation_id':session,'purpose':'internal'}
+            return {'success':True,'content':{'actions':self.state.recent_activity(platform=kwargs.get('platform') or None,since=since,limit=12,context=context),'reads':self.recent_reads(platform=kwargs.get('platform') or None,since=since,context=context),'conversation_records':conversation_recall.records(self,platform,session,query)}}
+        return {'success':True,'content':await self.build_context('memory_tool',platform,session,str(kwargs.get('query','')))}
 
     async def screen_content(self,material):
         if not isinstance(material,str) or len(material)>12000:raise ValueError('invalid_screen_material')
@@ -1292,6 +1337,7 @@ class UnifiedService:
     async def v14_2_tick(self):
         """Independent v14.2 background steps; a failure of one never stops the others or normal chat."""
         for name,step in (('owner_pending',lambda:self.state.flush_owner_pending()),
+                          ('voice_memory',lambda:self.voice.retry_memory()),
                           ('feedback_retry',lambda:feedback_mod.retry_pending(self)),
                           ('daily',lambda:self.daily.run() if self.daily else None),
                           ('exploration',lambda:self.exploration.tick() if self.exploration else None)):
