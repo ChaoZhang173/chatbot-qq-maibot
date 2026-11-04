@@ -123,6 +123,10 @@ class Config:
     allow_plaintext_loopback: bool = False
     bindings_path: str = ""
     backend_socket: str = "/srv/maibot/unified/core.sock"
+    backend_mode: str = "unix"
+    backend_url: str = ""
+    backend_api_key: str = field(default="", repr=False)
+    http_reminders: bool = False
     test_mode: bool = False
     provider: str = "siliconflow"
     # --- SiliconFlow (initial default): turn-end ASR + streaming CosyVoice2 TTS --------------
@@ -164,6 +168,13 @@ class Config:
     pace_rate_bytes_s: int = 48000        # 24 kHz mono s16le in real time (tests scale it)
 
     def validate(self) -> None:
+        if self.backend_mode not in ("unix", "http"):
+            raise ConfigError("PASSPORT_BACKEND must be unix or http")
+        if self.backend_mode == "http":
+            from .http_backend import validate_endpoint
+            validate_endpoint(self.backend_url)
+            if not self.backend_api_key or any(c.isspace() for c in self.backend_api_key):
+                raise ConfigError("PASSPORT_BACKEND_API_KEY must be a nonempty token without whitespace")
         if self.tls_cert or self.tls_key:
             if not (self.tls_cert and self.tls_key):
                 raise ConfigError("PASSPORT_TLS_CERT and PASSPORT_TLS_KEY must be set together")
@@ -197,6 +208,10 @@ class Config:
             allow_plaintext_loopback=_truthy(e.get("PASSPORT_ALLOW_PLAINTEXT_LOOPBACK")),
             bindings_path=e.get("PASSPORT_BINDINGS", ""),
             backend_socket=e.get("PASSPORT_BACKEND_SOCKET", d.backend_socket),
+            backend_mode=e.get("PASSPORT_BACKEND", d.backend_mode),
+            backend_url=e.get("PASSPORT_BACKEND_URL", ""),
+            backend_api_key=e.get("PASSPORT_BACKEND_API_KEY", ""),
+            http_reminders=_truthy(e.get("PASSPORT_HTTP_REMINDERS")),
             test_mode=_truthy(e.get("PASSPORT_TEST_MODE")),
             provider=e.get("PASSPORT_PROVIDER", d.provider),
             sf_base_url=e.get("PASSPORT_SF_BASE_URL", d.sf_base_url),

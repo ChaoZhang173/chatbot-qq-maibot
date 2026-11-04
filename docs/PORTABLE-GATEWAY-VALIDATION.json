@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "status": "preview; not deployed to the running Dafeiyu instance",
+  "python": "3.12",
+  "platform": "macOS",
+  "gateway_suite": {"run": 113, "passed": 113, "skipped": 0, "failed": 0},
+  "http_subset": {"run": 9, "passed": 9, "included_in_gateway_suite": true},
+  "covered": [
+    "Existing Unix backend and device protocol regressions",
+    "Authenticated HTTP voice-turn contract and device-scoped idempotency keys",
+    "Device credentials and client-supplied identity are not forwarded",
+    "HTTP errors, invalid replies, bounded responses, timeout and cancellation",
+    "No redirects or automatic chat request retries",
+    "Optional reminder operations and default-disabled HTTP reminder polling",
+    "Real local WebSocket to HTTP to WebSocket round trip with simulated ASR/TTS"
+  ],
+  "standalone_install": {
+    "clean_virtual_environment": true,
+    "maibot_installed": false,
+    "unified_core_installed": false,
+    "installed_wheel_smoke": "passed outside the source checkout with Python isolated mode",
+    "wheel_contains_only_gateway_and_package_metadata": true,
+    "wheel_sources_match_published_python_files": true,
+    "filename": "passport_voice_gateway-0.2.0-py3-none-any.whl",
+    "sha256": "15246eb89df3c9faadaee8f421b0dcfffd416ed300ac56ce3105eb18a8388822"
+  },
+  "live_provider_calls": 0,
+  "real_device_and_third_party_backend_acceptance": "Not performed for the portable adapter",
+  "python_3_11_execution": "Not performed; declared minimum based on the APIs used",
+  "production_modified": false,
+  "pypi_published": false,
+  "deployed_snapshot_validation": "VALIDATION-20261104.json"
+}

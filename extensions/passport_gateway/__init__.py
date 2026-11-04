@@ -1,2 +1,2 @@
-"""Dafeiyu Passport voice gateway (v0.1): authenticated WSS <-> ASR/brain/TTS pipeline."""
-__version__ = "0.1.0"
+"""Portable Passport gateway: authenticated WSS <-> speech providers / chatbot backend."""
+__version__ = "0.2.0"

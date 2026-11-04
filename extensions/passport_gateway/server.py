@@ -16,7 +16,7 @@ from websockets.asyncio.server import ServerConnection, serve
 from . import __version__
 from . import protocol as P
 from .birthday import deliver as deliver_birthday
-from .backend import BackendClient
+from .http_backend import build_backend
 from .config import Bindings, Config, DEVICE_ID_RE, is_loopback, token_hash
 from .providers import build_providers
 from .session import DeviceSession, Stats
@@ -74,7 +74,7 @@ class GatewayServer:
             bindings=bindings or Bindings(cfg.bindings_path),
             asr=asr or default_asr,
             tts=tts or default_tts,
-            backend=backend or BackendClient(cfg.backend_socket, cfg.brain_timeout_s),
+            backend=backend if backend is not None else build_backend(cfg),
             stats=Stats(),
             max_active_turns=cfg.max_active_turns,
         )

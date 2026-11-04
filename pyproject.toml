@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "passport-voice-gateway"
+version = "0.2.0"
+description = "Authenticated Passport voice terminals for HTTP chatbot backends and Dafeiyu"
+readme = "extensions/passport_gateway/README.md"
+requires-python = ">=3.11"
+license = {file = "extensions/passport_gateway/LICENSE"}
+dependencies = ["websockets==15.0.1", "httpx==0.28.1"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX",
+]
+
+[project.scripts]
+passport-gateway = "passport_gateway.__main__:main"
+passport-device = "passport_gateway.tokens:main"
+passport-demo-backend = "passport_gateway.demo_backend:main"
+passport-smoke = "passport_gateway.smoke:main"
+
+[project.urls]
+Repository = "https://github.com/ChaoZhang173/chatbot-qq-maibot"
+
+[tool.setuptools.packages.find]
+where = ["extensions"]
+include = ["passport_gateway", "passport_gateway.*"]
+
+[tool.setuptools.package-data]
+passport_gateway = ["LICENSE"]

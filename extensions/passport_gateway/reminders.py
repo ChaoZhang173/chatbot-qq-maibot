@@ -14,7 +14,8 @@ NOTIFY_FW = ("0.3.0-shunhuahua", "0.3.0", "0.3.1-shunhuahua", "0.3.1")
 
 class ReminderMixin:
     async def reminder_seen(self):
-        if self.fw not in NOTIFY_FW or self.closing:
+        if (self.fw not in NOTIFY_FW or self.closing
+                or not getattr(self.sv.backend, "supports_reminders", True)):
             return
         async with self.reminder_seen_lock:
             if time.monotonic() - self.reminder_seen_at < 30:
@@ -27,6 +28,7 @@ class ReminderMixin:
 
     def reminder_tick(self):
         if (not self.ready or self.closing or
+                not getattr(self.sv.backend, "supports_reminders", True) or
                 self.fw not in NOTIFY_FW or
                 self.reminder_task and not self.reminder_task.done()):
             return

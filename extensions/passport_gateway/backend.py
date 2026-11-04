@@ -28,6 +28,8 @@ class VoiceReply:
 
 
 class BackendClient:
+    supports_reminders = True
+
     def __init__(self, socket_path: str, timeout_s: float = 25.0):
         self.socket_path = socket_path
         self.timeout_s = timeout_s
@@ -87,7 +89,8 @@ def parse_response(raw: bytes) -> VoiceReply:
             raise BackendError("backend_unbound", error)
         if error in ("peer_denied", "admin_only", "unsupported_operation"):
             raise BackendError("internal", error)
-        raise BackendError("brain_failed", error[:60])
+        # Never send arbitrary backend diagnostics (which can contain secrets) to the device.
+        raise BackendError("brain_failed")
     text = data.get("reply")
     if not isinstance(text, str) or not text.strip():
         raise BackendError("brain_failed", "empty reply")

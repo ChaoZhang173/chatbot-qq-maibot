@@ -15,5 +15,9 @@
   "passport_backend_revision": "reminders-fw031-20261104",
   "passport_gateway_path": "extensions/passport_gateway",
   "context_block_max_chars": 5000,
-  "persona_display_budget": 1800
+  "persona_display_budget": 1800,
+  "passport_gateway_version": "0.2.0",
+  "passport_gateway_status": "portable-preview-not-deployed",
+  "deployed_snapshot_commit": "3f2b20d0ab53ea0259a4736461a6f2d105cd868c",
+  "source_manifest_ref": "3f2b20d0ab53ea0259a4736461a6f2d105cd868c"
 }

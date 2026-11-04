@@ -7,7 +7,7 @@
     python -m passport_gateway.tokens --bindings F --list                    # device ids + enabled/disabled, never a hash
 
 The file holds NO person / profile / QQ / session / role: which person a device belongs to is decided only by the
-backend's passport_identity.json (unified_core.passport_admin). A new token is printed once; only its SHA-256 is stored.
+chosen backend. The Dafeiyu adapter uses unified_core.passport_admin. A new token is printed once; only its SHA-256 is stored.
 The file is replaced atomically (0600) under a lock; a malformed file is never overwritten.
 """
 from __future__ import annotations
@@ -106,7 +106,7 @@ def main(argv=None) -> int:
         devices[args.device_id] = {"token_sha256": token_hash(token), "enabled": True}
         _write_atomic(path, data)
     print(f"device {args.device_id}: binding written to {path} (hash only). "
-          "It does not assign the device to a person: use unified_core.passport_admin for that.")
+          "Assign the device to a person in your backend (Dafeiyu: unified_core.passport_admin).")
     print("Device token (shown once; provision it into the device NVS, never commit it):")
     print(token)
     return 0
