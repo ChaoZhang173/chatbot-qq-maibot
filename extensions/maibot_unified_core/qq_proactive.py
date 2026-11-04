@@ -81,13 +81,13 @@ class ProactiveQQ:
         if d not in self.destinations() or self.s.state.get('qq_proactive_quiet:'+d['session'],False):return False
         if now-self.s.state.get('qq_native_ready_at',now)<600:return False
         session=d['session'];w,night=window(now)
-        send_cap=2 if night else 5 if d['kind']=='group' else 10
-        check_cap=max(2 if night else 8,send_cap)
+        send_cap=1 if night else 3 if d['kind']=='group' else 5
+        check_cap=max(1 if night else 4,send_cap)
         if self.db.execute('SELECT count(*) FROM qq_proactive_attempts WHERE session=? AND window=?',(session,w)).fetchone()[0]>=check_cap:return False
         counts=self.db.execute("SELECT count(*) FROM qq_proactive_attempts WHERE session=? AND window=? AND status IN ('sending','sent','unknown','failed')",(session,w)).fetchone()[0]
         if counts >= send_cap:return False
         last=self.db.execute('SELECT max(created) FROM qq_proactive_attempts WHERE session=?',(session,)).fetchone()[0]
-        if last and now-last<3600:return False
+        if last and now-last<7200:return False
         external=self.latest_external(session)
         # Allow a new topic even if nobody answered the previous one. Give an
         # active exchange a short pause; the existing per-chat gap/quotas apply.

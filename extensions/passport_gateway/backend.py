@@ -34,6 +34,19 @@ class BackendClient:
 
     async def voice_turn(self, device_id: str, turn_uid: str, text: str) -> VoiceReply:
         request = {"op": "voice_turn", "device_id": device_id, "turn_uid": turn_uid, "text": text}
+        return parse_response(await self._request(request))
+
+    async def reminder(self, op: str, device_id: str, **fields) -> dict:
+        raw = await self._request({"op": "reminder_" + op, "device_id": device_id, **fields})
+        try:
+            data = json.loads(raw)
+        except ValueError as exc:
+            raise BackendError("brain_failed", "malformed reminder reply") from exc
+        if not isinstance(data, dict) or data.get("ok") is not True:
+            raise BackendError("brain_failed", "reminder unavailable")
+        return data
+
+    async def _request(self, request: dict) -> bytes:
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_unix_connection(self.socket_path, limit=MAX_PACKET), 3.0)
@@ -53,7 +66,7 @@ class BackendClient:
                 await writer.wait_closed()
             except OSError:
                 pass
-        return parse_response(raw)
+        return raw
 
 
 def parse_response(raw: bytes) -> VoiceReply:

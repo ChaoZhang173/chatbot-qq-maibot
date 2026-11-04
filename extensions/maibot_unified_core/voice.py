@@ -251,7 +251,7 @@ class VoiceBridge:
         with st._lock:
             rows = st.db.execute(
                 "SELECT payload FROM events WHERE platform=? AND conversation_id=? AND active=1 "
-                "AND event_type IN ('device_voice_turn','device_voice_reply') "
+                "AND event_type IN ('device_voice_turn','device_voice_reply','device_reminder_reply') "
                 "AND origin IN ('external_user','bot_self') ORDER BY occurred_at DESC,rowid DESC LIMIT ?",
                 (platform, session, limit)).fetchall()
         out = []
@@ -409,7 +409,7 @@ class VoiceBridge:
             host_mid = "device-voice:" + host_key
             # The scope is the server's own record of WHO this turn is: role/kind come from the resolved route, never
             # from the Host, the model or the caller. Plugin hooks and tools read their authority from here.
-            self._active[host_key] = {"session": session, "message": (text[:300], owner["event_id"], actor),
+            scope = self._active[host_key] = {"session": session, "message": (text[:300], owner["event_id"], actor),
                                       "deadline": time.monotonic() + SCOPE_SECONDS,
                                       "turn_deadline": time.monotonic() + HOST_SECONDS,   # the Host turn's own budget
                                       "role": b["role"], "kind": b["kind"], "platform": b["platform"],
@@ -448,6 +448,9 @@ class VoiceBridge:
                         pass
             reply = str(decision.get("reply", "")).strip()
             mood = decision.get("mood") if decision.get("mood") in MOODS else "neutral"
+            reminder_failure = s.reminders.failed_voice_reply(scope.get("reminder_receipt"))
+            if reminder_failure:
+                reply, mood = reminder_failure, "gentle"
             tools = [t for t in decision.get("tools", []) if isinstance(t, dict)][:32]
             if not reply:
                 raise RuntimeError("empty_voice_reply")

@@ -1,15 +1,23 @@
 """voice_turn tests on the real maibot_unified_core store/private-access code with a fake Host (simulation)."""
 import asyncio
+import sys
+import unittest
 import json
 import os
 
 from maibot_unified_core.voice import REFUSAL
+from maibot_unified_core.voice_scope import CURRENT
 
 from .harness import (BackendCase, DEVICE, FakeCtx, GROUP_SESSION, OTHER_PRIVATE_ID, OTHER_SESSION,
                       OWNER_GROUP_ACTOR, OWNER_PRIVATE_ID, OWNER_SESSION, TURN_UID)
 
 
 class PeerBoundaryTests(BackendCase):
+    def test_reminder_heartbeat_is_gateway_only(self):
+        self.assertFalse(self.svc.authorize_peer(4242, "reminder_seen"))
+        with self.assertRaises(PermissionError):
+            self.svc.authorize_peer(0, "reminder_seen")
+
     def test_voice_peer_can_only_call_voice_turn(self):
         a = self.svc.authorize_peer
         self.assertFalse(a(4242))                                  # connects, not admin
@@ -39,6 +47,7 @@ class PeerBoundaryTests(BackendCase):
             self.svc.authorize_peer(os.getuid(), "voice_turn")
         self.assertIn("voice_uid_not_distinct", str(cm.exception))
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux SO_PEERCRED required")
     async def test_end_to_end_through_the_ipc_handler(self):
         """Real Unix socket + the real handle(): SO_PEERCRED uid is ours, so make that the voice uid."""
         self.policy["voice_uid"] = os.getuid() + 1                 # a different uid for the "gateway"
@@ -135,6 +144,39 @@ class SpoofTests(BackendCase):
 
 
 class TurnTests(BackendCase):
+    async def test_failed_reminder_cannot_become_a_spoken_or_stored_promise(self):
+        def attempt(kw):
+            scope = self.svc.voice.scope_for(kw["key"], kw["session_id"])
+            token = CURRENT.set(scope)
+            try:
+                self.assertFalse(self.svc.reminders.tool("create", "十分钟后", "叫醒")["success"])
+            finally:
+                CURRENT.reset(token)
+        self.ctx.voice_host.during = attempt
+        self.ctx.voice_host.result["reply"] = "没设成，但我会帮你盯着，十分钟后照样来叫你。"
+        result = await self.svc.dispatch(self.req("十分钟后叫我"))
+        self.assertIn("没设成功", result["reply"])
+        self.assertIn("不会自动叫你", result["reply"])
+        self.assertNotIn("照样", result["reply"])
+        again = await self.svc.dispatch(self.req("十分钟后叫我"))
+        self.assertEqual(again["reply"], result["reply"])
+        stored = self.svc.voice.recent_history(OWNER_SESSION)
+        self.assertNotIn("照样", str(stored))
+
+    async def test_successful_reminder_keeps_natural_host_reply(self):
+        import time
+        self.svc.state.put("passport_notify_seen:" + DEVICE, time.time())
+        def attempt(kw):
+            token = CURRENT.set(self.svc.voice.scope_for(kw["key"], kw["session_id"]))
+            try:
+                self.assertTrue(self.svc.reminders.tool("create", "十分钟后", "叫醒")["success"])
+            finally:
+                CURRENT.reset(token)
+        self.ctx.voice_host.during = attempt
+        self.ctx.voice_host.result["reply"] = "好，先放松一会儿，十分钟后我来叫你。"
+        result = await self.svc.dispatch(self.req("十分钟后叫我"))
+        self.assertEqual(result["reply"], self.ctx.voice_host.result["reply"])
+
     async def test_turn_goes_through_the_host_bridge_for_the_bound_owner_only(self):
         r = await self.svc.dispatch(self.req("我明天要去医院复查"))
         self.assertEqual((r["reply"], r["mood"], r["memory_stored"]), ("好呀，明天见。", "neutral", True))
@@ -435,6 +477,7 @@ class RelationshipTests(BackendCase):
         self.assertEqual(dict(self.svc.last_message), {})                               # nothing fabricated
 
 
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux setfacl required")
 class SocketAclTests(BackendCase):
     """grant_voice_socket_access: a narrow setfacl for voice_uid only, beside (not instead of) the XHS grant."""
 

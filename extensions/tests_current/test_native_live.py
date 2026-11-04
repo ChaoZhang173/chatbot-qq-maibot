@@ -93,13 +93,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             await self.ready();r=await self.q.tick();self.assertEqual(r['status'],'sent');self.assertEqual(self.ctx.send.text.call_args.args[1],'group')
             self.assertFalse(self.q.eligible(self.q.destinations()[0],time.time()+60))
             q2=ProactiveQQ(self.s);later=time.time()+7200
-            self.assertTrue(q2.eligible(q2.destinations()[0],later))
-            self.s.generate.return_value={'willing':True,'text':'突然想到拿史莱姆当闹钟会怎样。'}
-            with patch('maibot_unified_core.qq_proactive.time.time',return_value=later):
-                self.assertEqual((await q2.tick())['status'],'sent')
-            self.assertEqual(self.ctx.send.text.await_count,2)
-            payload=json.loads(self.s.generate.call_args.args[0][1]['content'])
-            self.assertEqual(len(payload['own_recent_topics']),1)
+            # Night cap is one per session, including after reconstructing the worker.
+            self.assertFalse(q2.eligible(q2.destinations()[0],later))
+            self.assertEqual(self.ctx.send.text.await_count,1)
             self.assertFalse(q2.eligible(q2.destinations()[0],later+7200))
             with self.assertRaises(ValueError):await self.q.send('x',{'kind':'private','target':'11111','session':'evil'},'hello')
     async def test_recent_exchange_waits_briefly_without_requiring_a_reply(self):

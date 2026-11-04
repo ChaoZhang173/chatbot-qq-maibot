@@ -1,0 +1,31 @@
+{
+  "scope": "Deployed server snapshot before the portable gateway change",
+  "python": "3.12",
+  "platform": "macOS",
+  "passport_backend": {
+    "run": 144,
+    "passed": 138,
+    "skipped": 6,
+    "failed": 0
+  },
+  "passport_gateway": {
+    "run": 104,
+    "passed": 104,
+    "skipped": 0,
+    "failed": 0
+  },
+  "skip_reason": "Linux SO_PEERCRED and setfacl checks require Linux; they are not counted as passing.",
+  "privacy": {
+    "server_source_export_known_values": "passed before export; no private values returned",
+    "publication_file_pattern_scan": "passed"
+  },
+  "host_patch": "Byte-identical to the previously validated complete 18-file MaiBot 1.3.14 patch",
+  "real_device_reminder_flow": "Pending end-to-end acceptance after the compatibility fix",
+  "live_provider_calls": 0,
+  "production_modified_by_publication": false,
+  "qq_native_live_suite": {
+    "run": 70,
+    "passed": 70,
+    "failed": 0
+  }
+}

@@ -60,6 +60,8 @@ class UnifiedService:
         self.daily=None;self.exploration=None;self.feedback_tasks=set()
         from .voice import VoiceBridge
         self.voice=VoiceBridge(self)
+        from .reminders import Reminders
+        self.reminders=Reminders(self)
 
     def reload_policy(self):
         self.policy=json.loads((self.root/'policy.json').read_text())
@@ -212,7 +214,7 @@ class UnifiedService:
             request=json.loads(raw);op=request.get('op')
             admin=self.authorize_peer(uid,op)
             if not admin and op not in self.XHS_OPS and op not in self.VOICE_OPS and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review','explore_claim','explore_report'):raise PermissionError('admin_only')
-            if op=='voice_turn':
+            if op in ('voice_turn','reminder_prepare'):
                 work=asyncio.create_task(self.dispatch(request,admin=admin))
                 disconnected=asyncio.create_task(reader.read(1))
                 try:
@@ -240,7 +242,7 @@ class UnifiedService:
             writer.write(json.dumps(response,ensure_ascii=False,default=str).encode()+b'\n');await writer.drain()
         finally:writer.close();await writer.wait_closed()
 
-    VOICE_OPS=('voice_turn',)
+    VOICE_OPS=('voice_turn','reminder_seen','reminder_claim','reminder_prepare','reminder_arm','reminder_report')
     XHS_OPS=('xhs_event','xhs_plan','xhs_activity','xhs_draft_submit','xhs_draft_claim','xhs_draft_report','xhs_draft_status','xhs_draft_check_claim','xhs_draft_check_report','xhs_explore_claim','xhs_explore_report')
 
     def authorize_peer(self,uid,op=None):
@@ -272,6 +274,11 @@ class UnifiedService:
 
     async def dispatch(self,r,admin=False):
         op=r.get('op')
+        if op=='reminder_admin_create':
+            if not admin:raise PermissionError('admin_only')
+            return self.reminders.admin_create(r)
+        if op in ('reminder_seen','reminder_claim','reminder_prepare','reminder_arm','reminder_report'):
+            return await self.reminders.rpc(r)
         if op in ('explore_claim','explore_report','xhs_explore_claim','xhs_explore_report'):
             self.reload_policy()
             platform='xiaohongshu' if op.startswith('xhs_') else 'bilibili'

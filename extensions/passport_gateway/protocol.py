@@ -137,6 +137,11 @@ def parse_control(raw: str | bytes) -> Control:
         if not isinstance(fw, str) or not 0 < len(fw) <= 32:
             raise ProtocolError("bad_message", "fw")
         return Control("hello", fw=fw)
+    if kind in ("notify_ready", "notify_busy", "notify_done"):
+        turn = msg.get("turn")
+        if type(turn) is not int or not 0x80000000 <= turn <= 0xFFFFFFFF:
+            raise ProtocolError("bad_message", "notification turn")
+        return Control(kind, turn)
     if kind in ("start", "end", "cancel"):
         turn = msg.get("turn")
         if type(turn) is not int or not 0 < turn <= 0xFFFFFFFF:

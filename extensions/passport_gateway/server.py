@@ -15,6 +15,7 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from . import __version__
 from . import protocol as P
+from .birthday import deliver as deliver_birthday
 from .backend import BackendClient
 from .config import Bindings, Config, DEVICE_ID_RE, is_loopback, token_hash
 from .providers import build_providers
@@ -115,6 +116,11 @@ class GatewayServer:
             "limits": {"max_sessions": self.cfg.max_sessions, "max_active_turns": self.cfg.max_active_turns,
                        "max_utterance_ms": P.MAX_UTTERANCE_MS},
             "sessions": len(self.sessions),
+            "reminder_watcher_running": self._watcher is not None and not self._watcher.done(),
+            "device_sessions": {device: {"firmware": session.fw,
+                "state": session.active.state if session.active else "idle",
+                "reminder_worker_running": session.reminder_task is not None and not session.reminder_task.done()}
+                for device, session in self.sessions.items()},
             "bound_devices": self.sv.bindings.count(),
             "stats": self.sv.stats.snapshot(),
         }
@@ -184,7 +190,9 @@ class GatewayServer:
             await asyncio.sleep(self.binding_poll_s)
             for session in list(self.sessions.values()):
                 try:
-                    await session.check_binding()
+                    if await session.check_binding():
+                        await deliver_birthday(session)
+                        session.reminder_tick()
                 except Exception:
                     log.exception("binding watcher failed for %s", session.device_id)
 

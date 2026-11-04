@@ -19,6 +19,7 @@ from . import protocol as P
 from . import speech_text
 from .backend import BackendError
 from .providers.base import ProviderError
+from .reminders import ReminderMixin, NOTIFY_FW
 
 log = logging.getLogger("passport.session")
 FEED_QUEUE_DEPTH = 64          # 64 x <=100 ms chunks; overflow = queue_full, never unbounded growth
@@ -49,6 +50,9 @@ class Turn:
     feeder: asyncio.Task | None = None
     pipeline: asyncio.Task | None = None
     deadline: asyncio.TimerHandle | None = None
+    reminder: bool = False
+    accepted: asyncio.Future | None = None
+    played: asyncio.Future | None = None
 
 
 class Stats:
@@ -66,7 +70,7 @@ class Stats:
                 "protocol_errors": self.protocol_errors}
 
 
-class DeviceSession:
+class DeviceSession(ReminderMixin):
     def __init__(self, ws, device_id: str, services, cred_digest: str):
         self.ws = ws
         self.device_id = device_id
@@ -74,10 +78,14 @@ class DeviceSession:
         self.sv = services
         self.cfg = services.cfg
         self.ready = False
+        self.fw = ""
         self.last_turn = 0
         self.active: Turn | None = None
         self.strikes = 0
         self.closing = False
+        self.reminder_task = None
+        self.reminder_seen_at = float("-inf")
+        self.reminder_seen_lock = asyncio.Lock()
 
     # ---------------------------------------------------------------- main loop
     async def run(self) -> None:
@@ -94,6 +102,9 @@ class DeviceSession:
                     break
         finally:
             await self._cancel_active("disconnect")
+            if self.reminder_task and not self.reminder_task.done():
+                self.reminder_task.cancel()
+                await asyncio.gather(self.reminder_task, return_exceptions=True)
 
     async def _protocol_violation(self, exc: P.ProtocolError) -> None:
         self.sv.stats.protocol_errors += 1
@@ -113,6 +124,9 @@ class DeviceSession:
         if ctl.type == "hello":
             if self.ready:
                 raise P.ProtocolError("out_of_order", "duplicate hello")
+            self.fw = ctl.fw
+            log.info("device=%s firmware=%s proactive=%s", self.device_id, self.fw, self.fw in NOTIFY_FW)
+            await self.reminder_seen()
             self.ready = True
             await self._send_raw(P.ready())
             return
@@ -121,7 +135,9 @@ class DeviceSession:
         if not await self.check_binding():
             return
 
-        if ctl.type == "start":
+        if ctl.type.startswith("notify_"):
+            self.reminder_control(ctl)
+        elif ctl.type == "start":
             await self._start(ctl.turn)
         elif ctl.type == "end":
             await self._end(ctl)
@@ -151,6 +167,8 @@ class DeviceSession:
         return False
 
     async def _start(self, turn_id: int) -> None:
+        if self.fw in NOTIFY_FW and turn_id >= 0x80000000:
+            raise P.ProtocolError("bad_message", "reserved notification turn")
         if turn_id <= self.last_turn:
             raise P.ProtocolError("out_of_order", "turn id must increase")
         if self.active:                               # a new press supersedes the old turn
@@ -255,6 +273,10 @@ class DeviceSession:
                 raise TurnFailure("asr_empty")
             await self._send(turn, P.transcript(turn.id, text, True))
 
+            await self.reminder_seen()
+            if not self._live(turn):
+                return
+
             try:
                 reply = await asyncio.wait_for(
                     self.sv.backend.voice_turn(self.device_id, turn.uid, text), cfg.brain_timeout_s)
@@ -348,6 +370,8 @@ class DeviceSession:
             if not started or total == 0:
                 raise TurnFailure("tts_failed", "provider returned no audio")
             if self._live(turn):
+                if turn.reminder:
+                    turn.state = "awaiting_playback"
                 await self._send(turn, P.audio_end(turn.id, total))
         finally:
             aclose = getattr(iterator, "aclose", None)

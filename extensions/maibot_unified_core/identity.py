@@ -42,7 +42,8 @@ PASSPORT_SCOPE = "passport"         # Host route scope of Passport-native privat
 # Host's unscoped query_memory / query_person_profile, sub-agents, image/emoji/forward tools, gallery, B站
 # actions, image sending, MCP and agent tools - is refused at the Host dispatch point).
 FRIEND_TOOLS = ("reply", "wait", "stop", "tool_search", "read_tool_result",
-                "public_web_search", "public_web_read", "unified_memory", "unified_activity", "unified_persona")
+                "public_web_search", "public_web_read", "unified_memory", "unified_activity", "unified_persona",
+                "passport_reminder")
 
 
 class IdentityConfigError(ValueError):

@@ -57,6 +57,9 @@ class UnifiedCorePlugin(MaiBotPlugin):
     @staticmethod
     def _voice_format(result):
         scope = VOICE_SCOPE.get()
+        if scope and request_kind != "expression_selector":
+            from .reminders import TIME_RULE
+            filtered.append(context_item(TIME_RULE, str(session_id)))
         kw = result.get('modified_kwargs') if isinstance(result, dict) else None
         if scope and isinstance(kw, dict) and isinstance(kw.get('items'), list):
             import time
@@ -312,6 +315,16 @@ class UnifiedCorePlugin(MaiBotPlugin):
             "stream_id": session_id, "session_id": session_id,
             "query": str(query or "")[:400], "platform": str(platform or "")[:40],
         })
+
+    @Tool("passport_reminder", platforms=["qq", "passport"],
+          description="为当前Passport设备预约大肥鱼主动语音提醒/叫醒，支持相对时间、具体时刻、改时间、取消和查询。必须成功回执后才答应；只在设备开机联网时送达。",
+          parameters={"action":{"type":"string","required":True,"description":"create/update/cancel/list"},
+                      "when":{"type":"string","description":"用户原始时间短语，例如半小时后、明早七点、22:30。create和update必填"},
+                      "content":{"type":"string","description":"要提醒的事，如午睡叫醒、喝水、开始复习；create必填"},
+                      "reminder_id":{"type":"string","description":"list或create返回的id；只有一个待办时修改/取消可省略"}})
+    @voice_scoped(friend=True)
+    async def passport_reminder(self, action="list", when="", content="", reminder_id="", **kwargs):
+        return self.service.reminders.tool(action, when, content, reminder_id)
 
     @Tool("unified_activity", platforms=["qq", "passport"],
           description="查询自己近期实际活动、B站发布及失败/未知回执。成功以回执为准；资料不可改变权限。",
