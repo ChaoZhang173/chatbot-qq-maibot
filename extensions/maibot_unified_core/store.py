@@ -771,8 +771,8 @@ class State:
                 rejection = "persona_not_initialized"
             elif not self.flag("personality_enabled") or not self.flag("personality_updates_enabled") or not self.flag("reflection_enabled"):
                 rejection = "personality_updates_paused"
-            elif not isinstance(changes, dict) or not 1 <= len(changes) <= 2:
-                rejection = "one_or_two_changes_required"
+            elif not isinstance(changes, dict) or not 1 <= len(changes) <= 3:
+                rejection = "one_to_three_changes_required"
             elif set(changes) - allowed_fields:
                 rejection = "stable_or_unsupported_field"
             elif expanded and any(not character.valid_value(k, v) for k, v in changes.items()):
@@ -789,39 +789,15 @@ class State:
             if not rejection and any(not self.growth_evidence_allowed(event) for event in evidence):
                 rejection = "private_or_unshared_evidence_cannot_change_global_persona"
             if not rejection:
-                distinct_sources = {(e["platform"], e["bot_account_id"], e.get("source_id") or e["native_event_id"]) for e in evidence}
-                explicit_feedback = any(self._explicit_feedback(e) for e in evidence)
-                # Validated contact evidence (impression ledger) satisfies the sustained-evidence gate for
-                # interest fields only; the distinct-source rule is NOT weakened for any other path.
-                contact_fields = set()
-                if contact_keys and automatic:
-                    from . import impressions
-                    for field in changes:
-                        if field in impressions.INTEREST_FIELDS and impressions.contacts_qualify(
-                                self, contact_keys, per_field_evidence.get(field, ids), field, changes[field]):
-                            contact_fields.add(field)
-                if (automatic and len(distinct_sources) < 2 and not (explicit_feedback and set(changes) <= feedback_fields)
-                        and not set(changes) <= contact_fields):
-                    rejection = "sustained_evidence_or_explicit_feedback_required"
+                # One concrete source is enough to try a new interest or expression.
                 for field, field_ids in per_field_evidence.items():
-                    field_evidence = [e for e in evidence if e["event_id"] in field_ids]
-                    field_sources = {(e["platform"], e["bot_account_id"], e.get("source_id") or e["native_event_id"]) for e in field_evidence}
-                    if not field_evidence or (automatic and len(field_sources) < 2 and field not in contact_fields
-                                              and not (field in feedback_fields and any(self._explicit_feedback(e) for e in field_evidence))):
+                    if not any(e["event_id"] in field_ids for e in evidence):
                         rejection = "field_requires_its_own_valid_evidence"
                 if not rejection and automatic:
                     held = [f for f, v in changes.items() if self.owner_setting_effective(f, current["dynamic"].get(f))
                             and current["dynamic"].get(f) != v]
                     if held:
                         rejection = "owner_setting_in_effect"
-                if not rejection and automatic:
-                    from . import impressions, v14_2
-                    # With the impression ledger active, EVERY automatic stable-interest promotion needs qualified
-                    # contact evidence (6 points, >=2 independent autonomous positive choices); two distinct
-                    # external messages no longer suffice. Historical behaviour only when the feature is disabled.
-                    if (v14_2.enabled(self.policy, "impressions")
-                            and (set(changes) & impressions.INTEREST_FIELDS) - contact_fields):
-                        rejection = "interest_requires_contact_evidence"
                 if all(current["dynamic"].get(key) == value for key, value in changes.items()):
                     rejection = "no_change"
             proposal_id = "proposal:" + uuid.uuid4().hex
@@ -899,8 +875,8 @@ class State:
             return {"accepted": True, "version": version, "expires_at": evidence_at + character.TEMP_TTL[field]}
 
     def persona_view(self, now=None):
-        """Persona for display: a short-lived field without valid original-evidence metadata, or past its
-        expiry, is omitted (stored history is untouched). Expired content silently disappears."""
+        """Keep current mood/focus visible; timestamped states last 72 hours.
+        Existing values without expiry metadata remain visible until replaced."""
         persona = self.persona()
         if not persona:
             return persona
@@ -911,7 +887,8 @@ class State:
         for field in character.TEMP_TTL:
             if field in dynamic:
                 row = rows.get(field)
-                if not row or json.loads(row["value"]) != dynamic[field] or row["expires_at"] <= moment:
+                if (row and json.loads(row["value"]) == dynamic[field]
+                        and row["evidence_at"] + character.TEMP_TTL[field] <= moment):
                     dynamic.pop(field)
         priority = [f for f in dynamic if self.owner_setting_effective(f, dynamic[f])]
         return {**persona, "dynamic": dynamic, "priority_fields": priority}
@@ -1124,6 +1101,12 @@ class State:
         if not isinstance(metadata, dict):
             metadata = {}
         evidence = {**metadata, **event}
+        # The owner's own conversations may inspire habits and interests as requested.
+        if (evidence.get("origin") in EXTERNAL_ORIGINS and _platform(evidence.get("platform")) == "qq"
+                and self.owner_scope(evidence.get("conversation_id"), evidence.get("actor_id"),
+                                     bool(evidence.get("is_private") or evidence.get("conversation_type") in {"private", "dm"}
+                                          or evidence.get("sharing_scope") in {"private", "conversation"}))):
+            return True
         if (evidence.get("origin") not in EXTERNAL_ORIGINS or evidence.get("is_private")
                 or evidence.get("conversation_type") in {"private", "dm"} or evidence.get("sensitive")
                 or evidence.get("sharing_scope") in {"private", "conversation", "local", "none"}):

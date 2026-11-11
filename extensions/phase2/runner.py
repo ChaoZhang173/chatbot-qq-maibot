@@ -182,6 +182,36 @@ class Engine:
             self.s.put("unified_sync_error", "bounded_sync_failure")
             return {"pending": True}
 
+    def reply_material(self, m):
+        """The incoming comment plus where it sits: the post (her own full text when it is her dynamic), the
+        thread's first comment and the comment being answered. Without this a bare "你想要这个功能吗？" under
+        her own post reached the model with no idea which post it was about."""
+        ctx = m.get("context") or {}
+        if not ctx:
+            return m["text"]
+        lines = ["【对方这次的评论】" + m["text"]]
+        own_post = ""
+        if ctx.get("post_id"):
+            row = self.s.db.execute(
+                "select text from actions where kind='dynamic' and status='success' and remote_id=? limit 1",
+                (ctx["post_id"],)).fetchone()
+            own_post = str(row[0]) if row and row[0] else ""
+        if own_post:
+            lines.append("【评论所在：你自己发的动态】" + own_post[:600])
+        else:
+            post = "；".join(x for x in (ctx.get("post_title"), ctx.get("post_text")) if x)
+            if post:
+                lines.append("【评论所在的帖子或视频】" + post)
+        if ctx.get("root_text"):
+            lines.append("【这串讨论的第一条评论】" + ctx["root_text"])
+        if ctx.get("parent_text"):
+            mine = bool(ctx.get("parent_id")) and self.s.db.execute(
+                "select 1 from actions where kind in ('reply','proactive') and status='success' and remote_id=? limit 1",
+                (ctx["parent_id"],)).fetchone()
+            lines.append(("【对方回复的是你自己的评论】" if mine else "【对方回复的那条评论】") + ctx["parent_text"])
+        lines.append("回复要接着上面的语境说；看不出对方具体指什么时可以直接问。")
+        return "\n".join(lines)
+
     def history(self, thread=None):
         if thread:
             return [
@@ -372,7 +402,7 @@ class Engine:
                 m.get("target"),
                 key,
                 lambda: self.model().generate(
-                    kind, m["text"], history=self.history(m["thread"]), event=event
+                    kind, self.reply_material(m), history=self.history(m["thread"]), event=event
                 ),
                 thread=m["thread"],
                 root=m.get("root", ""),

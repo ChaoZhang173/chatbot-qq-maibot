@@ -69,7 +69,7 @@ class Runner:
         c=json.loads((self.root/'config.json').read_text())
         assert set(c)=={'enabled','author_confirmed','account','credential_path','credential_sha256','daily_limit','night_limit','min_gap','decision_limit','night_decision_limit'}
         if type(c['enabled']) is not bool or type(c['author_confirmed']) is not bool:raise ValueError('invalid_channel_switch')
-        if c['account']!='9000000001':raise ValueError('channel_account_changed')
+        if c['account']!='REPLACE_PRIVATELY':raise ValueError('channel_account_changed')
         limits={'daily_limit':(1,6),'night_limit':(0,2),'min_gap':(7200,86400),'decision_limit':(1,12),'night_decision_limit':(0,3)}
         for k,(lo,hi) in limits.items():
             if type(c[k]) is not int or not lo<=c[k]<=hi:raise ValueError('invalid_channel_limit')

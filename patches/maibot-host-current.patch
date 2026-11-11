@@ -186,7 +186,25 @@
      async def store_message_to_db_async(message: "SessionMessage") -> None:
 --- a/src/maisaka/builtin_tool/reply.py
 +++ b/src/maisaka/builtin_tool/reply.py
-@@ -433,12 +433,21 @@
+@@ -139,6 +139,17 @@
+             "enum": ["简短表达", "正常回复", "长回复"],
+         },
+     }
++    from src.maisaka.voice_context import CURRENT as VOICE_ORIGIN
++    if VOICE_ORIGIN.get() is not None:
++        properties["voice_style"] = {
++            "type": "string",
++            "description": "可选。根据当前人格、聊天内容和心情自主选择整体语气，用一句简短描述；也可留空。不写逐字重读、局部停顿等播音动作指令。",
++        }
++        properties["mood"] = {
++            "type": "string",
++            "enum": ["neutral", "pleased", "gentle", "serious", "puzzled"],
++            "description": "本次设备屏幕表情对应的整体心情；具体说话语气另填voice_style。",
++        }
+     if _use_expression_intent():
+         properties["expression_intent"] = {
+             "type": "object",
+@@ -433,12 +444,21 @@
          reply_tool_args["_reply_id"] = extension_execution.reply_id
          reply_tool_args["_plugin_reply_prompt"] = extension_execution.extra_prompt
  
@@ -213,7 +231,7 @@
      except Exception:
          logger.exception(f"{tool_ctx.runtime.log_prefix} 获取回复生成器时发生异常: 目标消息编号={target_message_id}")
          logger.info(traceback.format_exc())
-@@ -530,6 +539,12 @@
+@@ -530,6 +550,12 @@
          )
  
      try:
@@ -226,7 +244,7 @@
          reply_items = await tool_ctx.post_process_reply_message_items_async(
              reply_text,
              invocation_arguments,
-@@ -588,6 +603,22 @@
+@@ -588,6 +614,22 @@
          "".join(c.text for c in reply_sequences[0].components if isinstance(c, TextComponent))
          if reply_sequences else ""
      )
@@ -275,6 +293,40 @@
              items=deepcopy(serialized_items),
              item_schema_version=CONTEXT_ITEM_SCHEMA_VERSION,
              tool_definitions=serialize_tool_definitions(all_tools),
+--- a/src/maisaka/context/messages.py
++++ b/src/maisaka/context/messages.py
+@@ -627,6 +627,31 @@
+     def __post_init__(self) -> None:
+         if self.original_message is None or not self.message_id:
+             raise ValueError("真实 IM 上下文必须具有原始消息和消息编号")
++        # Older synthesized QQ replies stored their words only in the message
++        # summary. Recover those words for both Planner and Replyer, without
++        # mutating a shared message or treating an incoming voice as our reply.
++        if self.source_kind not in {"guided_reply", "qq_voice_reply"}:
++            return
++        parts = [part for part in self.original_message.raw_message.components
++                 if not isinstance(part, ReplyComponent)]
++        placeholders = {"", "[语音消息]", "[语音]", "[音频]"}
++        transcript = (self.original_message.processed_plain_text or "").strip()
++        if (len(parts) != 1 or not isinstance(parts[0], VoiceComponent)
++                or (parts[0].content or "").strip() not in placeholders
++                or transcript in placeholders):
++            return
++        from copy import copy, deepcopy
++        from .history import build_session_message_visible_text
++
++        self.original_message = copy(self.original_message)
++        self.original_message.raw_message = deepcopy(self.original_message.raw_message)
++        self.raw_message = deepcopy(self.raw_message)
++        for sequence in (self.original_message.raw_message, self.raw_message):
++            for part in sequence.components:
++                if isinstance(part, VoiceComponent):
++                    part.content = transcript
++        self.visible_text = build_session_message_visible_text(
++            self.original_message, include_reply_components=False)
+ 
+     @property
+     def received_at(self) -> Optional[datetime]:
 --- a/src/maisaka/mode_policy.py
 +++ b/src/maisaka/mode_policy.py
 @@ -1,10 +1,14 @@
@@ -1388,7 +1440,7 @@
      def _register(name: str, impl: CapabilityImpl) -> None:
 --- /dev/null
 +++ b/src/plugin_runtime/capabilities/unified_memory.py
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,453 @@
 +"""Explicit, plugin-scoped RPC into the *running Host's* MemoryService.
 +
 +Install as src/plugin_runtime/capabilities/unified_memory.py in MaiBot 1.3.14.
@@ -1500,6 +1552,17 @@
 +        hydrated["content"] = str(row.get("content") or "")
 +        hydrated["source"] = str(row.get("source") or "")
 +        hydrated["metadata"] = dict(metadata)
++        # Event time lives in paragraph columns, not in the metadata JSON. Carry it
++        # separately so it can never be mistaken for permission metadata.
++        time_meta = {}
++        for key in ("event_time", "event_time_start", "event_time_end", "time_confidence"):
++            value = row.get(key)
++            if isinstance(value, (int, float)) and not isinstance(value, bool):
++                time_meta[key] = float(value)
++        if isinstance(row.get("time_granularity"), str):
++            time_meta["time_granularity"] = row["time_granularity"][:32]
++        if time_meta:
++            hydrated["time_meta"] = time_meta
 +        hits.append(hydrated)
 +    return {**payload, "hits": hits, "summary": "", "requires_scope_filter": True}
 +
@@ -2513,3 +2576,20 @@
 +            if self._lock_users[key] <= 0:
 +                self._lock_users.pop(key, None)
 +                self._locks.pop(key, None)
+--- a/src/services/send_service.py
++++ b/src/services/send_service.py
+@@ -1351,8 +1351,13 @@
+     maisaka_source_kind: str = "outbound_send",
+ ) -> Optional[SessionMessage]:
+     """向指定流发送自定义类型消息，并返回发送成功后的消息对象。"""
++    message_sequence = _build_message_sequence_from_custom_message(message_type, content)
++    if message_type.strip().lower() == "voice" and processed_plain_text.strip():
++        # The synthesized words belong to the voice component as well as the
++        # message summary: history prompts render components directly.
++        message_sequence.components[0].content = processed_plain_text.strip()
+     return await _send_to_target_with_message(
+-        message_sequence=_build_message_sequence_from_custom_message(message_type, content),
++        message_sequence=message_sequence,
+         stream_id=stream_id,
+         processed_plain_text=processed_plain_text,
+         typing=typing,

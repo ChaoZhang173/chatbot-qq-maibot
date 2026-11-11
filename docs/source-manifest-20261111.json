@@ -1,0 +1,806 @@
+{
+  "snapshot_date": "2026-11-11",
+  "captured_at": "2026-11-11T15:24:38.273785+00:00",
+  "persona_version": 59,
+  "maibot": "1.3.14",
+  "scope": "Live extension source and complete upstream-relative Host patch. Public configuration examples are selected references, not production configurations. Portable gateway preview retained separately.",
+  "files": {
+    "snapshots/deployed-20261111/passport_gateway/__init__.py": {
+      "deployed_export_path": "extensions/passport_gateway/__init__.py",
+      "sha256": "d0f17dec11af6e91841aea61b21682b67e6c7266debbcad61dd6255198c81231"
+    },
+    "snapshots/deployed-20261111/passport_gateway/__main__.py": {
+      "deployed_export_path": "extensions/passport_gateway/__main__.py",
+      "sha256": "8ee795dd95d126942a2a7f19dda9ad1ec77f6325d0b314532fca1ad0602ae454"
+    },
+    "snapshots/deployed-20261111/passport_gateway/backend.py": {
+      "deployed_export_path": "extensions/passport_gateway/backend.py",
+      "sha256": "81fc592533b9f9139444b2d7d7052b2faa3c84f091b8918530e64d2dfae866ba"
+    },
+    "snapshots/deployed-20261111/passport_gateway/birthday.py": {
+      "deployed_export_path": "extensions/passport_gateway/birthday.py",
+      "sha256": "e00d335b71ba57b5de26d254c31cab256b6a84ae6f0a4955cb50d614becc148f"
+    },
+    "snapshots/deployed-20261111/passport_gateway/config.py": {
+      "deployed_export_path": "extensions/passport_gateway/config.py",
+      "sha256": "70a9b57cb8dbe80bc95c3e81023cd8b98c7db0c9f940a522b4c0a09a981be463"
+    },
+    "snapshots/deployed-20261111/passport_gateway/protocol.py": {
+      "deployed_export_path": "extensions/passport_gateway/protocol.py",
+      "sha256": "5dd8b1ab0f080939c00b3b9f69623a6089695303bc058a374f85257c481b47f6"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/__init__.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/__init__.py",
+      "sha256": "7bfb155f17be6807719a022672a39651cbd2ac16efe01f12a188eb6954df1c67"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/audio_format.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/audio_format.py",
+      "sha256": "5735b28270dc420b9525975f351e1aebbc60e7e095bee27cbddc11313d59d7d4"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/base.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/base.py",
+      "sha256": "dcd60525dbf372bfd39621fbf11440f2fe3ad5b7313b6c9fd196614fb001ab09"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/dashscope.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/dashscope.py",
+      "sha256": "817c31e99174aef362d295e5a701ccf453416c6391b00583e58037b60dc0d391"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/dashscope_schema.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/dashscope_schema.py",
+      "sha256": "96ff3b2cd0663a6075dc08887fc1e74eaa6e93f4c68a0614088c018f72b9920b"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/fake.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/fake.py",
+      "sha256": "7cebd4835c92a3dde08e028b60e932868c873263249ee93b97ab1c465a02f83d"
+    },
+    "snapshots/deployed-20261111/passport_gateway/providers/siliconflow.py": {
+      "deployed_export_path": "extensions/passport_gateway/providers/siliconflow.py",
+      "sha256": "4b1c21e3bcc048995c79b3a7b98f7b98e45887fabf2d8c34ee0a4babeec954c2"
+    },
+    "snapshots/deployed-20261111/passport_gateway/reminders.py": {
+      "deployed_export_path": "extensions/passport_gateway/reminders.py",
+      "sha256": "2faadd456fef1951be9391a93dd8ed244a70cbb6419120fcb671fcef66c67e1b"
+    },
+    "snapshots/deployed-20261111/passport_gateway/server.py": {
+      "deployed_export_path": "extensions/passport_gateway/server.py",
+      "sha256": "786d64a113b37bf2dba58bf21b7cd67e3c6fea87af839da7d1c765c5812c8f2c"
+    },
+    "snapshots/deployed-20261111/passport_gateway/session.py": {
+      "deployed_export_path": "extensions/passport_gateway/session.py",
+      "sha256": "7b06e1247428c68bb4c44c6bf1b6400a3c6a796e26bc400cc27cf9df16eb76c8"
+    },
+    "snapshots/deployed-20261111/passport_gateway/speech_text.py": {
+      "deployed_export_path": "extensions/passport_gateway/speech_text.py",
+      "sha256": "e3fd7cbe5bccb0a1473e19a0c8709c803b4506b81e2a9fc928fa7c76e06ddbeb"
+    },
+    "snapshots/deployed-20261111/passport_gateway/tokens.py": {
+      "deployed_export_path": "extensions/passport_gateway/tokens.py",
+      "sha256": "6d1b4e3f29e33f3124352a35ff50cc60a396b7f627e0d227f848caef9f834ec3"
+    },
+    "snapshots/deployed-20261111/passport_gateway/wav.py": {
+      "deployed_export_path": "extensions/passport_gateway/wav.py",
+      "sha256": "4193fb8439d25441af6749391e1ce7d8758109130f4b965b80505f13534db725"
+    },
+    "extensions/xiaohongshu/__init__.py": {
+      "deployed_export_path": "extensions/xiaohongshu/__init__.py",
+      "sha256": "85667281059bbbff079a0d59e0fb4d68e0eaa1764844808c527159e4fba30a25"
+    },
+    "extensions/xiaohongshu/__main__.py": {
+      "deployed_export_path": "extensions/xiaohongshu/__main__.py",
+      "sha256": "7afeadd4522552160b4980dc798d62c6351e23026023c4dc3f40ef0a286a8f3d"
+    },
+    "extensions/xiaohongshu/cli.py": {
+      "deployed_export_path": "extensions/xiaohongshu/cli.py",
+      "sha256": "974f826b36e998b0459788896416c1f8e2b9888d05a6efaeb0e608be002d2356"
+    },
+    "extensions/xiaohongshu/config.py": {
+      "deployed_export_path": "extensions/xiaohongshu/config.py",
+      "sha256": "b89743e25203d21db30c57656d1cb93b8cf4c64b3a6413d782940fc3744a6748"
+    },
+    "extensions/xiaohongshu/core_client.py": {
+      "deployed_export_path": "extensions/xiaohongshu/core_client.py",
+      "sha256": "471125038e58f84fcaa7119191dae3f15c6ca77c547ddcd3e43e176e22f0355d"
+    },
+    "extensions/xiaohongshu/http_client.py": {
+      "deployed_export_path": "extensions/xiaohongshu/http_client.py",
+      "sha256": "775f433628319d71df1d9df18dc658dcc0f6866e1991c8e82c9755e873653b2b"
+    },
+    "extensions/xiaohongshu/media.py": {
+      "deployed_export_path": "extensions/xiaohongshu/media.py",
+      "sha256": "e2e6e328b823aecf83d8fbdd990c77b3b6fbd095e0ef319784b936dadd00ee77"
+    },
+    "extensions/xiaohongshu/runner.py": {
+      "deployed_export_path": "extensions/xiaohongshu/runner.py",
+      "sha256": "9b67167b70d1324ae936b555a228b2d90ac08920c3fbdff456c78d2c5336bab7"
+    },
+    "extensions/xiaohongshu/store.py": {
+      "deployed_export_path": "extensions/xiaohongshu/store.py",
+      "sha256": "307ff76acd21f20cf29988741670729c9e28b70f0eac44af4d5d1dd7fc1edfd5"
+    },
+    "extensions/xiaohongshu/textcard.py": {
+      "deployed_export_path": "extensions/xiaohongshu/textcard.py",
+      "sha256": "d1e8ec1a5acaf48c721447395dd63dcca834944e37adfee44e7bd74a6b5ae841"
+    },
+    "extensions/phase2/__init__.py": {
+      "deployed_export_path": "extensions/phase2/__init__.py",
+      "sha256": "90b0a6746bb5886864f88ca51edaf5483c4cbc32007733f6adb3039f244d0934"
+    },
+    "extensions/phase2/account.py": {
+      "deployed_export_path": "extensions/phase2/account.py",
+      "sha256": "e78532f60bbe26370455e5508219085c56c723ed213ced05721289a647eeb80b"
+    },
+    "extensions/phase2/account_schema.py": {
+      "deployed_export_path": "extensions/phase2/account_schema.py",
+      "sha256": "eeae1861a7b0c46852cb64a4ad8c3e74da6b7aee37083e7d7e46b81fd95aae63"
+    },
+    "extensions/phase2/api.py": {
+      "deployed_export_path": "extensions/phase2/api.py",
+      "sha256": "12841d75c6748ab9054485649fbeee1e9ae2a227bd52ab626adcb08167507aa1"
+    },
+    "extensions/phase2/autonomy.py": {
+      "deployed_export_path": "extensions/phase2/autonomy.py",
+      "sha256": "6b26aa90cf8f0be5d0258bbbc25b56feb3f181213903d82af216b819bcc86943"
+    },
+    "extensions/phase2/boost.py": {
+      "deployed_export_path": "extensions/phase2/boost.py",
+      "sha256": "7addc260772aa86f306792fc232fe0324cac916d711902b598a0a583b47aa49a"
+    },
+    "extensions/phase2/bridge.py": {
+      "deployed_export_path": "extensions/phase2/bridge.py",
+      "sha256": "297ee5081707e95ecddd079524a9d8db8a62ed225ebc26fa0d9d587038cf1604"
+    },
+    "extensions/phase2/command_schema.py": {
+      "deployed_export_path": "extensions/phase2/command_schema.py",
+      "sha256": "1234b59d515894c2dc10aeb71d9fa05f98b38840dcf628ada51be783b54ed79b"
+    },
+    "extensions/phase2/commands.py": {
+      "deployed_export_path": "extensions/phase2/commands.py",
+      "sha256": "7d141c415e677ba923a907c695f2d682ee86bd9d9a2e656965b9cbadb213abcd"
+    },
+    "extensions/phase2/content_rules.py": {
+      "deployed_export_path": "extensions/phase2/content_rules.py",
+      "sha256": "3fe991b3ebaeb748f0ed1364b55a0b3d710c5a244dcd4c146f11af59ec6c2b4c"
+    },
+    "extensions/phase2/control.py": {
+      "deployed_export_path": "extensions/phase2/control.py",
+      "sha256": "8d3b19cec0a6737ee8117e860c8cc6bd49a96a9ab993da5d79d04d0f35898a8b"
+    },
+    "extensions/phase2/core.py": {
+      "deployed_export_path": "extensions/phase2/core.py",
+      "sha256": "af8c7aa2167af896bdd8ab75762e5be3113783cef222d0e5b7764f2e69b7bff1"
+    },
+    "extensions/phase2/diary.py": {
+      "deployed_export_path": "extensions/phase2/diary.py",
+      "sha256": "355fb67382a3463a25171c6e8cf8588400f3830aabe0f327e015bc8bd4e31227"
+    },
+    "extensions/phase2/engagement.py": {
+      "deployed_export_path": "extensions/phase2/engagement.py",
+      "sha256": "39274d82dc7dc0f0ccf3d5185075279b66f437fc313aa50a2012748fec33056a"
+    },
+    "extensions/phase2/links.py": {
+      "deployed_export_path": "extensions/phase2/links.py",
+      "sha256": "39570b2aecae735cc955bc7aa6362bf123cc7bec37f7d16500eab491237e4aa0"
+    },
+    "extensions/phase2/live.py": {
+      "deployed_export_path": "extensions/phase2/live.py",
+      "sha256": "41a336664afd481122d6a5cbf617b93c184ffdf077858aff0dba4e7ba226abb6"
+    },
+    "extensions/phase2/live_media.py": {
+      "deployed_export_path": "extensions/phase2/live_media.py",
+      "sha256": "cd7c948936fcceb8ce31d8cfaccb157586e8584029807b74e7ebb1470a843dd0"
+    },
+    "extensions/phase2/live_observer.py": {
+      "deployed_export_path": "extensions/phase2/live_observer.py",
+      "sha256": "e195b3ae49227418378b4923ba7e4b63f94ec9b354d772a87f68dd568853acf9"
+    },
+    "extensions/phase2/login.py": {
+      "deployed_export_path": "extensions/phase2/login.py",
+      "sha256": "b2b72d727a9ef85e7573a20f894010af979572ff7c0d28ae20c01737baa6c77d"
+    },
+    "extensions/phase2/mentions.py": {
+      "deployed_export_path": "extensions/phase2/mentions.py",
+      "sha256": "0fc7c1d63f4fece85d8e91b68238275b5aaec4b043367a4b6e8e0e00780a6bd5"
+    },
+    "extensions/phase2/model_probe.py": {
+      "deployed_export_path": "extensions/phase2/model_probe.py",
+      "sha256": "d1a47c8ee2540d7f7b5f7662b7b04af052d4e69e6ea012daea86805e7e24a265"
+    },
+    "extensions/phase2/public_probe.py": {
+      "deployed_export_path": "extensions/phase2/public_probe.py",
+      "sha256": "65031e8ef45fcd027550432fe5527eb9cb5ddc1343e045afcae60374724f0c02"
+    },
+    "extensions/phase2/quota.py": {
+      "deployed_export_path": "extensions/phase2/quota.py",
+      "sha256": "52ed34f1265b466732f264b1635697eb617240e02b01a51fa2cdeb2a5c78fccc"
+    },
+    "extensions/phase2/runner.py": {
+      "deployed_export_path": "extensions/phase2/runner.py",
+      "sha256": "aee11ddced44adb9ba3a8ae207536c0de34ba8773e828bf9b2d6ecf1feb82c2b"
+    },
+    "extensions/phase2/unified.py": {
+      "deployed_export_path": "extensions/phase2/unified.py",
+      "sha256": "bde2a470be2fa347633180d9f4e9260c6727fb937a62ccde82f3aa32db307607"
+    },
+    "extensions/phase2/visibility.py": {
+      "deployed_export_path": "extensions/phase2/visibility.py",
+      "sha256": "74b957c3276304fe2975c1dc72ff18b6ba529b01d279c01becdba1c846e8c2c8"
+    },
+    "extensions/phase2/wait_core.py": {
+      "deployed_export_path": "extensions/phase2/wait_core.py",
+      "sha256": "2cb99a73739d6f6b197b370341cd0259e10b94788c08b7ba71e578a0b696b1fd"
+    },
+    "extensions/paidtasks/paidtasks/__init__.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/__init__.py",
+      "sha256": "4495c136652aaa660a14dc309420a27dd92bb036e9499de81b7dd2d64ea93f10"
+    },
+    "extensions/paidtasks/paidtasks/afdian.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/afdian.py",
+      "sha256": "d8d42321a2e11fdf2a0e03f9b945d8088194d05e8a0704e76c57ceeba6cd2762"
+    },
+    "extensions/paidtasks/paidtasks/control.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/control.py",
+      "sha256": "389edca3a38885a58a65f357ae3bd0efdb65a09d4f7f5ddb79d29c0f73e7833a"
+    },
+    "extensions/paidtasks/paidtasks/executor.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/executor.py",
+      "sha256": "08ed106b73c187269c78d3990fb867e6ccd8582ae17ea8b9aeed23b9ff43ae31"
+    },
+    "extensions/paidtasks/paidtasks/probe.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/probe.py",
+      "sha256": "98395a1deef29e71ffee29b1b6ef6ec2bfe9b3866b79d80427cbc3a3748a9f1d"
+    },
+    "extensions/paidtasks/paidtasks/reconcile.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/reconcile.py",
+      "sha256": "d27560e64d083a7a0bfbe512cbf2c059edbb7fcaf705169498eefb0c1be104f8"
+    },
+    "extensions/paidtasks/paidtasks/runtime.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/runtime.py",
+      "sha256": "a11c792064bca655668941940756324f85bc583ce8e69b9489162c31c38af4d5"
+    },
+    "extensions/paidtasks/paidtasks/store.py": {
+      "deployed_export_path": "extensions/paidtasks/paidtasks/store.py",
+      "sha256": "4c07c6e8a61e502313f764f0b4b46eb556f7c662da606883144f787aa9b2ed5b"
+    },
+    "extensions/maibot_unified_core/__init__.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "extensions/maibot_unified_core/_manifest.json": {
+      "deployed_export_path": "extensions/maibot_unified_core/_manifest.json",
+      "sha256": "92c445e2369dc5fbac9a04b4a594b6af7ad501d9ee335791c8c5270badfb2029"
+    },
+    "extensions/maibot_unified_core/account_schema.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/account_schema.py",
+      "sha256": "eeae1861a7b0c46852cb64a4ad8c3e74da6b7aee37083e7d7e46b81fd95aae63"
+    },
+    "extensions/maibot_unified_core/agenda.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/agenda.py",
+      "sha256": "aed93a299b8f6b9ef985273c8aa9864de274ed88c044ae12750022f0f969031c"
+    },
+    "extensions/maibot_unified_core/autonomy.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/autonomy.py",
+      "sha256": "bb62416eb945fcc7d35377e5ab13d4f186aedf4bdd29cccec0de5f397277a642"
+    },
+    "extensions/maibot_unified_core/capabilities.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/capabilities.py",
+      "sha256": "f72e9c96988f7763c56f64d63ea09f779153a646c932e0a933cfd6ad242a4848"
+    },
+    "extensions/maibot_unified_core/command_planner.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/command_planner.py",
+      "sha256": "2f9512dc6b7ecb38eb78eaa6ade3332c0cf844ed064d6b5ce09038cf9f538d91"
+    },
+    "extensions/maibot_unified_core/command_schema.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/command_schema.py",
+      "sha256": "1234b59d515894c2dc10aeb71d9fa05f98b38840dcf628ada51be783b54ed79b"
+    },
+    "extensions/maibot_unified_core/commands.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/commands.py",
+      "sha256": "b62b90237ec3f4fe472dee54515dd16365394a4e9a0149eeec01ae0f14898274"
+    },
+    "extensions/maibot_unified_core/compact_context.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/compact_context.py",
+      "sha256": "c13c422bece07fe8ae8704d4df0ef666da7500ec0811e1cd290153ea33575757"
+    },
+    "extensions/maibot_unified_core/content_rules.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/content_rules.py",
+      "sha256": "6c9c7c41a7896a8f5e27fcd561d737c130d458180de23ea30a8192f400de295c"
+    },
+    "extensions/maibot_unified_core/context_layers.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/context_layers.py",
+      "sha256": "cb36ff02a9f2e0244ab337118fe8b9dfe2e637f1584e77947ec188a6a6f9a260"
+    },
+    "extensions/maibot_unified_core/control.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/control.py",
+      "sha256": "deff8b990e32a5d11f3bbec99ff8f84ffbc8d349eef2e37b861e1e2d96514917"
+    },
+    "extensions/maibot_unified_core/conversation_recall.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/conversation_recall.py",
+      "sha256": "67807efd81ed3467c733702eec3af98d2147bed524ca64756e6947af9dbe69e9"
+    },
+    "extensions/maibot_unified_core/daily_learning.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/daily_learning.py",
+      "sha256": "a23d5b09cbb3172a4e411d3da09ce3639144bf946ed50ad2c664e095031eadbb"
+    },
+    "extensions/maibot_unified_core/diary.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/diary.py",
+      "sha256": "e0681f5ad7b5ce35ffcd10cd796405cea3ccf3dfa354e4ffd312fe6b4b954206"
+    },
+    "extensions/maibot_unified_core/diary_episodes.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/diary_episodes.py",
+      "sha256": "2609b234e9b4219c4fe6d7ce84ac0565cb55eda4bc351d20be752a21af85f3c9"
+    },
+    "extensions/maibot_unified_core/engagement_decision.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/engagement_decision.py",
+      "sha256": "3db770097734e764d5ac97ebaf9013774cf071cebcbe35595796ec17745021bc"
+    },
+    "extensions/maibot_unified_core/exploration.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/exploration.py",
+      "sha256": "e8c39e2575020d7307025178a2351f983e8235c79ad4a08fbbf6a7507d0ec5a5"
+    },
+    "extensions/maibot_unified_core/feedback.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/feedback.py",
+      "sha256": "bda2d870ccf39d107e92c64491c55a8a8892ad64fd5c8fd333e97748122fbe67"
+    },
+    "extensions/maibot_unified_core/gallery.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/gallery.py",
+      "sha256": "fb5124d0ed6a7f7c56c72d83b4b912a48243d834d024f3eff4879134339110d2"
+    },
+    "extensions/maibot_unified_core/host_adapter.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/host_adapter.py",
+      "sha256": "3fbb41b1df89037c82f1f8e9cf4e6614eb5d98037b48e9c08f031a3136eb9a3e"
+    },
+    "extensions/maibot_unified_core/host_patch.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/host_patch.py",
+      "sha256": "a82b3ebf10c30795fc7137c9c2d55181b5ee0a5d5bd6b20c8d92d178ce1d5358"
+    },
+    "extensions/maibot_unified_core/identity.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/identity.py",
+      "sha256": "1047447614f91c5d8a72e1ffcaf8b9d778ab861ebadb12554549f01b0c754de3"
+    },
+    "extensions/maibot_unified_core/impressions.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/impressions.py",
+      "sha256": "940be953c3259c2928a667347c976ae760034d9736b28d7cf1441362a979ae13"
+    },
+    "extensions/maibot_unified_core/live.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/live.py",
+      "sha256": "cdd5bcb10f751634dd773ade2bfce4821ba5f1fefcf1fbd23600ba0b4c505daf"
+    },
+    "extensions/maibot_unified_core/live_evidence.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/live_evidence.py",
+      "sha256": "e97629fdef4e6a0e66308185f3fd6f4b875c4c4b989d8f23c6f4491795f9a751"
+    },
+    "extensions/maibot_unified_core/live_observe.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/live_observe.py",
+      "sha256": "2517a9b2bfd37d978b8ca12a59b5243947c103c6e84dfa43adcf89eccd6b0dab"
+    },
+    "extensions/maibot_unified_core/media.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/media.py",
+      "sha256": "fe5fe7fd1e8cfddf8ea81c9f29c1de19d29f8bf05c840d52603790dec2d1a659"
+    },
+    "extensions/maibot_unified_core/memory_time.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/memory_time.py",
+      "sha256": "07dafd86cc78cad267415081ad2f468fe3aeebadc44e8bbc28c6ed22b1863331"
+    },
+    "extensions/maibot_unified_core/migrations_v14_2.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/migrations_v14_2.py",
+      "sha256": "88d08f499aa03a0595bdd012ff6e9e2b727162f6d165cf728b6c1ede233be2ff"
+    },
+    "extensions/maibot_unified_core/paid_bridge.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/paid_bridge.py",
+      "sha256": "7020c027a12d3cd6bb05c204cbe3230da9c70ee5f534d1e1c6a8928be7e0485c"
+    },
+    "extensions/maibot_unified_core/passport_admin.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/passport_admin.py",
+      "sha256": "0da24aad62525233010ba995c514873c3e695eed70c817550d95aa5e2d4e7ac2"
+    },
+    "extensions/maibot_unified_core/persona.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/persona.py",
+      "sha256": "4cbee1019dd3f4b354c02ca15dce34488854ca5917963116a9fc0de54417a22b"
+    },
+    "extensions/maibot_unified_core/plugin.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/plugin.py",
+      "sha256": "64c666a768864edbccc4e0170ffa5b08c3658b71e2ea5ddb9e16d19dd4fd046d"
+    },
+    "extensions/maibot_unified_core/private_access.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/private_access.py",
+      "sha256": "626522a856ce0cfd4d7b49f276cbcabce5cdc9316ccb3b31332eb7b7fe053c41"
+    },
+    "extensions/maibot_unified_core/qq_channel.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/qq_channel.py",
+      "sha256": "9410a9d3b2699edb3a27a6d8b42a79bee59504bef3906e76afb6dc68439dd249"
+    },
+    "extensions/maibot_unified_core/qq_identity_context.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/qq_identity_context.py",
+      "sha256": "96d7db5a01be0dad87a35664cb917ef1db4ec03b9c4908774450c560823532c9"
+    },
+    "extensions/maibot_unified_core/qq_proactive.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/qq_proactive.py",
+      "sha256": "18e2873ab2a08cb8ff5f1fda7665356ec187f2c1dc022257d6d596bb8cf20bcc"
+    },
+    "extensions/maibot_unified_core/qq_voice.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/qq_voice.py",
+      "sha256": "7489e1417d51d919619dc8923877d13ad227c7b963a0342b397fac375fe1ee32"
+    },
+    "extensions/maibot_unified_core/receipts.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/receipts.py",
+      "sha256": "740b2553d7b7de2a84882d8554a552a39865d5ff42047f3bd5c393ca841c5302"
+    },
+    "extensions/maibot_unified_core/reminders.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/reminders.py",
+      "sha256": "3d2d10f7b3e7e6ec2c6c2f916d0d8b761a056d5573f180ae10dc0e5dbb7c58af"
+    },
+    "extensions/maibot_unified_core/service.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/service.py",
+      "sha256": "0932f08dd84a91dc0aa1fc1af585f587ef18ad19df61897335bcbf25b40e37f4"
+    },
+    "extensions/maibot_unified_core/store.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/store.py",
+      "sha256": "71dc31e47bf0176399024f3287d399dad1a106c2ddd742c7fb05c9643905adb6"
+    },
+    "extensions/maibot_unified_core/v14_2.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/v14_2.py",
+      "sha256": "e31c0db90d4a8431313f3c8f80df58fd90f6de67253fbca762510333d223bd1c"
+    },
+    "extensions/maibot_unified_core/voice.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/voice.py",
+      "sha256": "b07ff768018784dc0b9e5b785f3783ce36bee46547dda9ca57886661dfb7eae0"
+    },
+    "extensions/maibot_unified_core/voice_scope.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/voice_scope.py",
+      "sha256": "74b3ba797141dcd6ed92b14fb36dc692477c0443c2bbf7b877eb8422181dd22e"
+    },
+    "extensions/maibot_unified_core/voice_style.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/voice_style.py",
+      "sha256": "601e4ec901e1bc0f4deb7109d3b343be59f9017e03b84e4c74847fad497f1018"
+    },
+    "extensions/maibot_unified_core/web_access.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/web_access.py",
+      "sha256": "a8aeea2764a8b54dbc027f9fcdb2adf6218493c016d16084d9529b7fd24e0e75"
+    },
+    "extensions/maibot_unified_core/xiaohongshu.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/xiaohongshu.py",
+      "sha256": "dd56630a6628061621ee671f3849c21ed30119f77b6071990df70262e34bec5c"
+    },
+    "extensions/maibot_unified_core/xiaohongshu_review.py": {
+      "deployed_export_path": "extensions/maibot_unified_core/xiaohongshu_review.py",
+      "sha256": "179dc7e99ee2cb9b5cfc666cec11dfe037a7ba26cb8d1151b9a7b531311a53b7"
+    },
+    "extensions/qq_official_adapter/LICENSE": {
+      "deployed_export_path": "extensions/qq_official_adapter/LICENSE",
+      "sha256": "1d0c99970f78b217bea76a225125d28ab746c94ccd894e7e6b7b964f12bb2e7f"
+    },
+    "extensions/qq_official_adapter/README.md": {
+      "deployed_export_path": "extensions/qq_official_adapter/README.md",
+      "sha256": "76a8000ccac22058ca7cf165f40257ccbd7d0268b0d7e6d20a0560aba40fe23c"
+    },
+    "extensions/qq_official_adapter/_manifest.json": {
+      "deployed_export_path": "extensions/qq_official_adapter/_manifest.json",
+      "sha256": "e8991db8ea875f2da70aadecf54b2207fdcd1053d466f00b49c96132dc3f783d"
+    },
+    "extensions/qq_official_adapter/codec.py": {
+      "deployed_export_path": "extensions/qq_official_adapter/codec.py",
+      "sha256": "94e70a7fde6b7bab22cfb53475dcb169a77228241b5cdb0786ecc4af60ec7022"
+    },
+    "extensions/qq_official_adapter/paid_owner_gateway.py": {
+      "deployed_export_path": "extensions/qq_official_adapter/paid_owner_gateway.py",
+      "sha256": "3e334a4fd1795f9dfad89d8aa6f9fbfb1fb5bbdb889956b04497ec5c2fa30de9"
+    },
+    "extensions/qq_official_adapter/plugin.py": {
+      "deployed_export_path": "extensions/qq_official_adapter/plugin.py",
+      "sha256": "c3b4d4356f3dac9bfc9c28900b600373c5fafa2312356f578f10f66d17088fa2"
+    },
+    "extensions/qq_official_adapter/settings.py": {
+      "deployed_export_path": "extensions/qq_official_adapter/settings.py",
+      "sha256": "deb8b90ab58c1b7352f96904dbcbf7de44c797c136ea43938b036156afdb1524"
+    },
+    "extensions/maibot_qq_native_adapter/README.md": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/README.md",
+      "sha256": "fac4fb004144847ca8774b5a78a07fb92d88270c09aa263eda3495fa589b560c"
+    },
+    "extensions/maibot_qq_native_adapter/_manifest.json": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/_manifest.json",
+      "sha256": "b7f7bfc963532e874d1b16d537f58eab4b202d4e32bd633890c572e5a390b910"
+    },
+    "extensions/maibot_qq_native_adapter/access_scope.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/access_scope.py",
+      "sha256": "4ba7689ed318d9d3fc691a7b0174d681f4476989904eebb885b7b8a5db8705b0"
+    },
+    "extensions/maibot_qq_native_adapter/apis/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/__init__.py",
+      "sha256": "ecd886b0495390e720ce33ccfa9c71b2fa7c2fe0401eb5dd80df19da6cbd8575"
+    },
+    "extensions/maibot_qq_native_adapter/apis/account.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/account.py",
+      "sha256": "af4443bd8a00cdbbdcfb468fcda038266ada445a6cbe0e88ccb8cb2e5b05658b"
+    },
+    "extensions/maibot_qq_native_adapter/apis/file.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/file.py",
+      "sha256": "4f4e214207caa7f213dea19ca7157161febfaaac8016332bf09680d85f396641"
+    },
+    "extensions/maibot_qq_native_adapter/apis/group.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/group.py",
+      "sha256": "9d5f162c25e31d164539988a2355a7095e0a3dab362edfb1c6d30490e6b87a1e"
+    },
+    "extensions/maibot_qq_native_adapter/apis/message.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/message.py",
+      "sha256": "906baec360c9639e7cbd10bb71fcbcb1039a0558adca8107c44eaf1d9f095490"
+    },
+    "extensions/maibot_qq_native_adapter/apis/message_tool_patch.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/message_tool_patch.py",
+      "sha256": "97a2bf349122f950e6e8b3e8bb0c920a9d4f4fa3f8cd734202565fd15e7a414b"
+    },
+    "extensions/maibot_qq_native_adapter/apis/qzone.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/qzone.py",
+      "sha256": "0d702d3221d7e6d5eb8e602396bc0213aacdb1bcf713e3678aba9a76a9894272"
+    },
+    "extensions/maibot_qq_native_adapter/apis/support.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/support.py",
+      "sha256": "24eb5d0a06501b3ef9a93754f76db782857ef58305fb82b7cdd01112eef9782b"
+    },
+    "extensions/maibot_qq_native_adapter/apis/system.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/apis/system.py",
+      "sha256": "2d19607dece878a4e5fb279467d47be91f0fd31188ab81c41d7549b11355f528"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/__init__.py",
+      "sha256": "f9fab1f84cd3f8b6098dd0b216a0e143be16de5dd1510d63ffc9a26e035c3817"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/inbound/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/inbound/__init__.py",
+      "sha256": "3ebeaee34968027feaacbb3ada0631d939b27d99131538ac50f457c330936f07"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/inbound/cards.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/inbound/cards.py",
+      "sha256": "909d512a94f920ca93eec1c077b044ebe5cc71ccf23f29d358b2ac89ebcc4b7b"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/inbound/message_codec.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/inbound/message_codec.py",
+      "sha256": "3c3fc24d0f53069f196246228fe14b7a315f93908f77605815d7f3463ca92224"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/inbound/text.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/inbound/text.py",
+      "sha256": "4ebdb64549775bf9887992c5ef6cf310ff586332e7007bf68716891cd8ef9c75"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/__init__.py",
+      "sha256": "d6ce5c0497af568a530b4ba8e6c7c466b27448e8af35307dd04fb8cb857c5b1b"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/enricher.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/enricher.py",
+      "sha256": "410376f0025ef95e1f728835c88abb69d693cf0aa9822a66d7cc06a1dd2eb686"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/helpers.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/helpers.py",
+      "sha256": "792104f70977ac6cfc77ebabf514f6021677c2d9e1d1348fa1e86f8f79ae7dc9"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/message_codec.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/message_codec.py",
+      "sha256": "ebbc01176dc1e3b5dee9e30a86f1bc17f7f66a6187281fe9a163a82ed36617ae"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/meta_event_logger.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/meta_event_logger.py",
+      "sha256": "f528e9b9d1590a35350f22811f0b839be9e7a1d70159da093f294a9ca1f1321e"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/notice/renderer.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/notice/renderer.py",
+      "sha256": "99190ffa9e51488c55156ccdc250e723d1367c1f315a18e1944d259fbf263c0f"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/outbound/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/outbound/__init__.py",
+      "sha256": "8598f0511f37af580b60dfacc4ac189ecd6f48ea56c4f8773ea921d4a5b7ad1d"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/outbound/mentions.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/outbound/mentions.py",
+      "sha256": "fabc47e3107144f5df7baf1ed3a691a8c2e7067ed6e4acbe7f70021b9cea8185"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/outbound/message_codec.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/outbound/message_codec.py",
+      "sha256": "3b8abd5f7f533561729b63b9f2938bfd4a7f5d76aebb365b4c67e67ffb620ea3"
+    },
+    "extensions/maibot_qq_native_adapter/codecs/outbound/segment_encoder.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/codecs/outbound/segment_encoder.py",
+      "sha256": "f4284c9f473f2c9dd7a01f8e02fb35b82040908eeba3368bdc9902bab38dd034"
+    },
+    "extensions/maibot_qq_native_adapter/config.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/config.py",
+      "sha256": "9e1de40441b9219f7554f474b5d09df547d81eed8c637fd5034f58d7218cc3d6"
+    },
+    "extensions/maibot_qq_native_adapter/constants.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/constants.py",
+      "sha256": "5b045f515490e724c9dda5843adddc1afec92290d306663146cfe51953f77d41"
+    },
+    "extensions/maibot_qq_native_adapter/debug.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/debug.py",
+      "sha256": "2f4a7d3966f9ace4922c9ed2cf7494cb377dc6b944a92a91922e6441e36d5136"
+    },
+    "extensions/maibot_qq_native_adapter/filters.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/filters.py",
+      "sha256": "2a125d934cc12b8378cd68428b030fc79b3b7ac01ac3c0c5d7d4e6a7a1574ea7"
+    },
+    "extensions/maibot_qq_native_adapter/heartbeat_monitor.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/heartbeat_monitor.py",
+      "sha256": "72a8a75989562ea20a97ea303a13406aba5f780cc62981931c683487e4e3ab28"
+    },
+    "extensions/maibot_qq_native_adapter/plugin.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/plugin.py",
+      "sha256": "fc2f478c247eb80d82d6a49ea139bb721a2067ec31703eeafdfae7e882f72b08"
+    },
+    "extensions/maibot_qq_native_adapter/profile.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/profile.py",
+      "sha256": "a8358b161c09133c71100bb2e2e7c51966620ae56874c19680a6d929c015b76b"
+    },
+    "extensions/maibot_qq_native_adapter/qq_emoji_list.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/qq_emoji_list.py",
+      "sha256": "903e4ce1d5dd36fceaae7feee63f44a459c3b819d9961d26a963dae139b162a8"
+    },
+    "extensions/maibot_qq_native_adapter/qq_face_map.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/qq_face_map.py",
+      "sha256": "3b097dffd0fc0d68480ffda74b6ff32329fc5ec3375bff1dfaea135c81b42919"
+    },
+    "extensions/maibot_qq_native_adapter/runtime/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/runtime/__init__.py",
+      "sha256": "172d344161f25a9c3c68494947789907b5fd1a48ae8fff3bb6a04ae5565c805f"
+    },
+    "extensions/maibot_qq_native_adapter/runtime/builder.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/runtime/builder.py",
+      "sha256": "19f56b7e428d1c6fbe78d56e090917bbf6ff26ffcf54ed04fc935f63821d5f92"
+    },
+    "extensions/maibot_qq_native_adapter/runtime/bundle.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/runtime/bundle.py",
+      "sha256": "8bd4cf098b7c6a396d080e50ae6ec1904843ad03a10a85ee6aba3b2cc8ae2ef0"
+    },
+    "extensions/maibot_qq_native_adapter/runtime/router.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/runtime/router.py",
+      "sha256": "e7626672e8c8477b3c38400e879aee918e716e5301a24ff99ff0685484c44668"
+    },
+    "extensions/maibot_qq_native_adapter/runtime_state.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/runtime_state.py",
+      "sha256": "bd5f39905a89859e1fc84f8b1098a4d16981b38649a377026df9ff33b087c3d8"
+    },
+    "extensions/maibot_qq_native_adapter/services/__init__.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/__init__.py",
+      "sha256": "92784d91a46422228d49873d87f9556557e56dc115c793208d83397aceb9ffcc"
+    },
+    "extensions/maibot_qq_native_adapter/services/action_service.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/action_service.py",
+      "sha256": "aa4a011c9242a4c617942fa6dfe6755438757c2e96e25b7011c67405591313ec"
+    },
+    "extensions/maibot_qq_native_adapter/services/ban_state_store.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/ban_state_store.py",
+      "sha256": "0fab145562164f184d1a5cc1cd35f5d5d1ff21587d2e793419c7c0af0ea23f4e"
+    },
+    "extensions/maibot_qq_native_adapter/services/ban_tracker.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/ban_tracker.py",
+      "sha256": "3efd45029f14cd1e759051cd179e3b53bf1821ea84645c9c9cd2f6e0642bf03e"
+    },
+    "extensions/maibot_qq_native_adapter/services/official_bot_guard.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/official_bot_guard.py",
+      "sha256": "9cf06197a099beb586c1da011286bb0fe600bc2f38bcfa318adbf80e78fb362e"
+    },
+    "extensions/maibot_qq_native_adapter/services/query_service.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/services/query_service.py",
+      "sha256": "b2027be390956971b4fddd4420caf999535e899b460b9a3d04994aa442cea56c"
+    },
+    "extensions/maibot_qq_native_adapter/transport.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/transport.py",
+      "sha256": "566cab61ed4e736cc19bf040db9a93fa9ac895abd44c4222aebb03238f68e399"
+    },
+    "extensions/maibot_qq_native_adapter/types.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/types.py",
+      "sha256": "06a7c61c7fb5b5967c9bceb48b87918cde6d7ec50cb2c0dacfa7ce48577e8ef6"
+    },
+    "extensions/maibot_qq_native_adapter/voice.py": {
+      "deployed_export_path": "extensions/maibot_qq_native_adapter/voice.py",
+      "sha256": "19bf5bcc1599613ad6741a6d671f3636d2f8b9ee696a49185ea3c6618d7931e1"
+    },
+    "extensions/maibot_bilibili_bridge/_manifest.json": {
+      "deployed_export_path": "extensions/maibot_bilibili_bridge/_manifest.json",
+      "sha256": "caee6e85575f4a1e048ac284d963d1e5454bb667df8a0016ed282e15478ad9c1"
+    },
+    "extensions/maibot_bilibili_bridge/client.py": {
+      "deployed_export_path": "extensions/maibot_bilibili_bridge/client.py",
+      "sha256": "34f124dd7e41496ff28995e982c4acb1960702c897790efa990f58874cd4387c"
+    },
+    "extensions/maibot_bilibili_bridge/plugin.py": {
+      "deployed_export_path": "extensions/maibot_bilibili_bridge/plugin.py",
+      "sha256": "3f83574a50a5acb2c0544132814a390d3b91e4953b62a36ec442f39aaf708442"
+    },
+    "extensions/qq_channel/qq_channel_runner.py": {
+      "deployed_export_path": "extensions/qq_channel/qq_channel_runner.py",
+      "sha256": "b7d43f13bb49e230b48a847a325567f1252f8d16503d7f08dda264d7393b5f1c"
+    }
+  },
+  "host_overrides": {
+    "common/utils/utils_message.py": {
+      "upstream_sha256": "9db8ff2b7f133f5cb4aaa94c5c450055aa060020fa01b4bac33129d8616b21c3",
+      "deployed_sha256": "24e069f425549a66e54f87250c13c7b98d0ebef3f120e625cec2db1c7a12a911"
+    },
+    "maisaka/chat_loop_service.py": {
+      "upstream_sha256": "bdc1f8955f4b629931a0285eca1bc10cd1cf1a773821452fe583ec172ca0f2d7",
+      "deployed_sha256": "fcd0dee6d51eb74d08b90d72c4ce84e739d99335bfbfef21154be51ef431dbc9"
+    },
+    "maisaka/mode_policy.py": {
+      "upstream_sha256": "a8c0546d37ad48370c50f5ebfa134013c10e0b66235e176be749f72ec32b78fb",
+      "deployed_sha256": "0ffa872876b66b40c8a96d85897b58e5bd773b1e42b7015824d05836e20e8fa9"
+    },
+    "maisaka/reasoning_engine.py": {
+      "upstream_sha256": "d79a1db886d725b0a495bbea4d47ba399e94609241c468945778221833e292a1",
+      "deployed_sha256": "3ef44713510d97c388a3e462e304a3806e535f91517be7fe1b294f55e0f7996d"
+    },
+    "maisaka/builtin_tool/reply.py": {
+      "upstream_sha256": "da3febac3654b84ac8b0401f116fb70f1399cb656832a4eba8deddec384391a6",
+      "deployed_sha256": "88c7102f7a22053a59da3b6adad514ea9faae2fd41a9ab8138f4e42c2c2427f2"
+    },
+    "maisaka/context/messages.py": {
+      "upstream_sha256": "a1191eea5b2f324eb86115e4511e7e2c494be3bc533a5d59662e92dd61ebded9",
+      "deployed_sha256": "84a2bd5ac30f09acc00af2bd5148e7853aedf225e0f57e8738cb61797e396b02"
+    },
+    "maisaka/turn_trigger/idle_backoff.py": {
+      "upstream_sha256": "7b5ce1980f631ca2e56544139fe3324413c067a556e2ee71a28cc7da96cfd0c1",
+      "deployed_sha256": "fb4f9989b7714141096a7732f5f1d3bf30f51ccc53ce14f12fabecb55e19ee0b"
+    },
+    "person_info/person_info.py": {
+      "upstream_sha256": "825ae3b4a1a9402ad5cac224851f226c214577ffb970b71392036d817bf8722a",
+      "deployed_sha256": "8b3d73dd4cce7260775d52f1fb8ccb2adf2def27077bb2810ebf2ce21ce40d11"
+    },
+    "plugin_runtime/component_query.py": {
+      "upstream_sha256": "8ab651ca8e11d19cf3443a752390715e1f73793fd6a08891538ab612d41662e0",
+      "deployed_sha256": "091313e360ec945a0f145291d467ba9a0e773450ca5243bea59c4a6dbf7834a8"
+    },
+    "plugin_runtime/integration.py": {
+      "upstream_sha256": "358e7e76ba9398a506a746a65083a019d72c84d11f026981fe3cb1bf066f3151",
+      "deployed_sha256": "76b6e499240ee0c22a3d64d9cb79f9ee8b57e595cf0a65b8aaf5204935ba44bc"
+    },
+    "plugin_runtime/capabilities/registry.py": {
+      "upstream_sha256": "c3c4d708997fe01028b5f262e14bc0065b161b8781d6464116ea075b510f081e",
+      "deployed_sha256": "2be116b9cb14bb9c1636057f4eb08d61d20a4cfa049bf9cdb650c64227235856"
+    },
+    "services/memory_flow_service.py": {
+      "upstream_sha256": "8e96d4c588fcecfdf92427c22b87ad81cead84ac1a99daa492968657c8d11a1f",
+      "deployed_sha256": "9379996c02115ae73d828a1201db156d959f9919fd94269c69b84067c82e4d12"
+    },
+    "services/send_service.py": {
+      "upstream_sha256": "75699e95b1a442d5d43f8fb57a09bdeb3df54d3733713b582ad8ae05a54a06af",
+      "deployed_sha256": "1859755edc32c0677cc42d4b593d108e81ad92649db6fe9f8251638e21229f69"
+    },
+    "common/token_optimizations.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "896cfdd31eb847e8865f4095547e207f95e33d234d81a6b409ebf5072e048e13"
+    },
+    "maisaka/reply_termination.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "3830072f9ccecf0b60395847c9dab322fc686d014f3bed8414dede58aaca9aad"
+    },
+    "maisaka/voice_context.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "a4599077cf1e30e586c2fc9fba2b3e69e4c1f22f5ceaeec4486b1bf9b5a23af1"
+    },
+    "maisaka/voice_entry.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "9af140dd7e421e43ac0c32987067f55b021fd08017bb4f217feb80244b4b22d5"
+    },
+    "plugin_runtime/capabilities/unified_memory.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "3fbb41b1df89037c82f1f8e9cf4e6614eb5d98037b48e9c08f031a3136eb9a3e"
+    },
+    "plugin_runtime/capabilities/unified_voice.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "949902244809f8322f82028a50f7dfe2e6edf2ed0d5b75a34855bc20b624c9e7"
+    },
+    "services/person_fact_dedup.py": {
+      "upstream_sha256": null,
+      "deployed_sha256": "8c0d9318589d49b4e5857c372182f2f332cc237f2985be4a9d6761b5ba37dc6b"
+    }
+  },
+  "source_redactions": {
+    "extensions/qq_channel/qq_channel_runner.py": "The fixed account guard uses REPLACE_PRIVATELY in the public copy."
+  },
+  "excludes": [
+    "credentials",
+    "real account/device/session IDs",
+    "chat databases",
+    "learning evidence",
+    "private relationship preferences",
+    "private backup archives"
+  ]
+}

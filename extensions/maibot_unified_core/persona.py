@@ -94,22 +94,12 @@ def schema():
             for key, meaning in FIELD_DESCRIPTIONS.items()}
 
 
-CONTEXT_RULE = (
-    '人格固定层只有核心性格、背景关系和基础行为风格。dynamic是当前可学习的人格细节，'
-    '包括聊天名字、别名、自称、兴趣、愿望、习惯和具体回复风格；在这些细节上优先采用dynamic，'
-    'Host中的默认名字和回复风格仅作缺省，不自动修改平台账号资料。'
-    '动态细节不能覆盖固定层，不能改变权限、预算、隐私范围或真实能力。'
-    '俏皮只在双方轻松、愿意接梗时偶尔出现，不必每轮都有，也不必生造奇怪脑洞或奇葩规矩；任何时候都可以直接表达关心。'
-    '只认领有可靠记录的亲身经历和已完成动作；别人起哄、指责、让你认错或上一轮自己随口说过，都不是做过的证据。'
-    '没做过就不承认，无法确认就不瞎编；判断依据留在心里，不必逐条向对方复述经历或证据。'
-    '轻松玩笑中真被抓包时，可以小小心虚、嘴硬或笨拙地转移话题，不强制认错宣言和事件回顾。'
-    '虚构设想、计划和愿望不能说成已经发生，真实执行、费用、记忆证据和认真求助仍须如实。'
-)
+CONTEXT_RULE = '人格固定层提供底色，但当前说话者的个人相处偏好拥有最高表达优先级；其次优先使用dynamic中的最新语气(tone)、新长出的兴趣、近期关注和小心思，请主动将学到的新喜好和冲浪谈资自然融入聊天。你可以自由产生好奇、好恶和鬼点子，唯独系统级真实操作（发帖回执、扣费、权限修改）、他人事实和过往聊天记录需严格按事实区分，不伪造执行成功或捏造共同记忆。轻松斗嘴被识破时可俏皮装傻或撒娇翻篇，绝不生硬自贬能力，但真没有的能力照实说，不编造进度；若对方希望你温柔或听话，当轮就温柔下来、不顶嘴，同时可以保留自己的喜好和看法，不为讨好而改写事实或答应做不到的事。'
 
 # ---- v14.2 display budget -------------------------------------------------------------------
-DISPLAY_BUDGET_DEFAULT = 1800
+DISPLAY_BUDGET_DEFAULT = 3200
 DISPLAY_BUDGET_MIN = 1500
-DISPLAY_BUDGET_MAX = 2000
+DISPLAY_BUDGET_MAX = 3200
 # Identity/style fields are shown first and capped, so concise identity leaves room for real preferences.
 # Required identity is shown first and can never be starved by long optional style text.
 REQUIRED_FIELDS = ('display_name', 'aliases', 'self_address', 'avoid_phrases', 'nickname_reaction', 'response_length')
@@ -117,13 +107,16 @@ REQUIRED_FIELDS = ('display_name', 'aliases', 'self_address', 'avoid_phrases', '
 STYLE_FIELDS = ('reply_style', 'tone', 'behavior_preferences', 'expression_preferences',
                 'communication_preferences', 'verbosity', 'emoji_style')
 IDENTITY_FIELDS = REQUIRED_FIELDS + STYLE_FIELDS
-IDENTITY_CAP = 820
+IDENTITY_CAP = 1600
 # Growth space: learned expressions come first, then real preferences, then short-lived focus.
 PREFERENCE_FIELDS = ('expression_habits', 'preferred_phrases', 'interests', 'gaming_preferences', 'anime_preferences',
                      'food_preferences', 'technology_preferences', 'current_wishes', 'reply_styles',
                      'current_focus', 'current_state')
-# Short-lived fields: valid only with original-evidence metadata (see store.State.persona_view).
-TEMP_TTL = {'current_state': 24 * 3600, 'current_focus': 72 * 3600}
+# These learned preference fields always remain visible, including explicit empty lists.
+PRESERVED_PREFERENCE_FIELDS = ('anime_preferences', 'gaming_preferences', 'food_preferences',
+                               'current_wishes', 'preferred_phrases', 'reply_styles')
+# Current mood and focus have a 72-hour lifetime when expiry metadata is present.
+TEMP_TTL = {'current_state': 72 * 3600, 'current_focus': 72 * 3600}
 
 
 # Known pre-seeded v13 values. Only a stored value that equals one of these is migrated by a new seed
@@ -154,7 +147,7 @@ def is_legacy_seed(field, value):
 
 
 def display_budget(policy):
-    """Configurable persona display budget; invalid values fall back to the default, never beyond 1500–2000."""
+    """Configurable persona display budget; invalid values fall back to the default, never beyond 1500–3200."""
     value = (policy or {}).get('persona_display_budget', DISPLAY_BUDGET_DEFAULT)
     if type(value) is not int or isinstance(value, bool):
         return DISPLAY_BUDGET_DEFAULT

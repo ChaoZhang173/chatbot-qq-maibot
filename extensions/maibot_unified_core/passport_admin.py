@@ -85,8 +85,9 @@ def apply_command(root, data, args):
         _profile(data, args.profile)["enabled"] = cmd == "enable-profile"
         changes.append(f"{cmd} {args.profile}")
     elif cmd == "set-address":
-        _profile(data, args.profile)["preferred_address"] = None if args.clear else _address(args.address)
-        changes.append(f"{args.profile}: spoken address " + ("cleared" if args.clear else "set (presentation only)"))
+        auto = getattr(args, 'auto', False)
+        _profile(data, args.profile)["preferred_address"] = '' if auto else None if args.clear else _address(args.address)
+        changes.append(f"{args.profile}: spoken address " + ("autonomous" if auto else "cleared" if args.clear else "set (presentation only)"))
     elif cmd == "rename-profile":
         _profile(data, args.profile)["display_name"] = _name(args.name)
         changes.append(f"rename {args.profile}")
@@ -218,8 +219,10 @@ def build_parser():
     s.add_argument("--address", help="optional spoken address preference (presentation only)")
     s = sub.add_parser("set-address")
     s.add_argument("--profile", required=True)
-    s.add_argument("--address")
-    s.add_argument("--clear", action="store_true")
+    mode = s.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--address")
+    mode.add_argument("--clear", action="store_true", help="restore display-name fallback")
+    mode.add_argument("--auto", action="store_true", help="let the model choose the spoken address")
     for name in ("enable-profile", "disable-profile", "clear-qq", "unlink-qq"):
         sub.add_parser(name).add_argument("--profile", required=True)
     s = sub.add_parser("rename-profile")

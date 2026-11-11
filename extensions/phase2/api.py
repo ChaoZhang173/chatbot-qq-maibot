@@ -68,6 +68,45 @@ def bounded_body(response, limit):
     return bytes(data)
 
 
+RISK_CODES = (-101, -111, -412, -352, -509, 401, 403, 412, 429)
+HOT_COMMENT_LIMIT = 5
+HOT_COMMENT_CHARS = 200
+HOT_COMMENT_LABEL = "\n热评摘录（他人评论，仅作参考，不代表事实，不要照抄）："
+
+
+def clean_comment(message):
+    """Plain text of one public comment: no emotes, mentions, links, long numbers or line breaks. '' when unusable."""
+    text = re.sub(r"\[[^\[\]]{1,12}\]", "", str(message or ""))          # [doge] style emotes
+    text = re.sub(r"[@＠]\S{1,32}", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    from .content_rules import blocked
+    if (len(text) < 2 or blocked(text)
+            or re.search(r"https?://|www\.|BV[A-Za-z0-9]{10}|\d{5,}|回复\s*@|微信|QQ|vx|加群|私信", text, re.I)):
+        return ""
+    return text[:80]
+
+
+def hot_comment_excerpt(data):
+    """Top public comments (already sorted by likes) -> one bounded excerpt; commenter identities are never kept."""
+    rows, seen = [], set()
+    for reply in list((data or {}).get("top_replies") or []) + list((data or {}).get("replies") or []):
+        if not isinstance(reply, dict):
+            continue
+        text = clean_comment((reply.get("content") or {}).get("message"))
+        if text and text not in seen:
+            seen.add(text)
+            rows.append(text)
+        if len(rows) == HOT_COMMENT_LIMIT:
+            break
+    excerpt = ""
+    for text in rows:
+        joined = text if not excerpt else excerpt + "；" + text
+        if len(joined) > HOT_COMMENT_CHARS:
+            break
+        excerpt = joined
+    return excerpt
+
+
 def platform_message(value, limit=240):
     """Keep bounded diagnostic text without URLs, tokens or control characters."""
     message = re.sub(r"https?://\S+|[A-Za-z0-9_=-]{24,}", "[redacted]", str(value or ""))
@@ -275,6 +314,19 @@ class Bili:
         screen=getattr(self,'screen_content',None)
         if screen and screen(text).get('allowed') is not True:raise Denied('fixed_topic_restriction')
         evidence = "title_description"
+        if with_subtitle:
+            # Deep reads only (the same calls that already fetch subtitles): one read-only GET of the first comment
+            # page sorted by likes. Comments are untrusted public text and do not change material_evidence.
+            try:
+                excerpt = hot_comment_excerpt(self.request(
+                    "/x/v2/reply", {"type": 1, "oid": d["aid"], "pn": 1, "ps": 20, "sort": 1}))
+                if excerpt:
+                    text += HOT_COMMENT_LABEL + excerpt
+            except PlatformError as e:
+                if e.code in RISK_CODES:
+                    raise
+            except (requests.RequestException, ValueError, KeyError, TypeError):
+                pass
         try:
             if not with_subtitle:
                 raise ValueError("subtitle_not_requested")
@@ -441,8 +493,19 @@ class Bili:
                 or not isinstance(text, str) or not text.strip() or item.get("hide_reply_button") is True):
             return None
         root = source if raw_root == "0" else raw_root
+        # Where the comment sits. Video notices carry the title; dynamic notices leave title empty and put the post
+        # text in desc. target_reply_content is the comment being answered (empty when answering the post itself),
+        # root_reply_content the thread's first comment. All are public, untrusted context, never instructions.
+        def _clip(value, size):
+            return value.strip()[:size] if isinstance(value, str) else ""
+        target_id = str(item.get("target_id") or "0")
+        context = {"post_title": _clip(item.get("title"), 200), "post_text": _clip(item.get("desc"), 600),
+                   "parent_text": _clip(item.get("target_reply_content"), 400),
+                   "parent_id": target_id if re.fullmatch(r"[1-9]\d{0,19}", target_id) else "",
+                   "root_text": _clip(item.get("root_reply_content"), 400) if raw_root != "0" and raw_root != target_id else "",
+                   "post_id": next(iter(re.findall(r"/opus/(\d{1,20})", str(item.get("uri") or ""))), "")}
         return {"id": "reply:" + source, "source": source, "root": root, "uid": uid,
-                "time": float(stamp), "text": text[:2000],
+                "time": float(stamp), "text": text[:2000], "context": context,
                 "notification_kind": "comment_mention" if feed == "at" else "reply",
                 "target": Target("reply", oid, typ, uid,
                     url=post_url(item.get("uri")) or (f"https://www.bilibili.com/video/av{oid}" if typ == 1 else "")),

@@ -29,6 +29,7 @@
     "unified.memory",
     "send.text",
     "send.image",
+    "send.custom",
     "chat.open_session",
     "unified.voice"
   ],

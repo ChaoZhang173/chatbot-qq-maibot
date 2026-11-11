@@ -6,8 +6,7 @@ the task (cooldown enforced) -> at most 1 search + 2 result reads -> report(). T
 itself through the shared public reader with its own trusted autonomous entry.
 
 Budgets (all global, enforced here; the platform executors additionally keep their own stricter quotas):
-  <= 3 keyword opportunities per Beijing day, >= 60 min between opportunities, the same normalised purpose OR query is
-  not explored again within 24 h, <= 1 search + <= 2 reads per opportunity, a failed opportunity is never retried under a
+  Policy-configured keyword opportunities, spacing and query reuse window (currently 10/day, 20 min, 12 h), <= 1 search + <= 2 reads per opportunity, a failed opportunity is never retried under a
   new task id, and a turn that itself came from a search result can never enqueue another search.
 Search terms must be publicly safe (no private/personal material) and the originating event must be public.
 """
@@ -116,8 +115,9 @@ class Exploration:
         purpose_norm, query_norm = norm(purpose), norm(query)
         with self.state._transaction():
             rows = [dict(r) for r in self.state.db.execute(
-                "SELECT * FROM exploration_tasks WHERE created_at>=? ORDER BY created_at", (moment - cfg['dedup_seconds'],))]
-            if any(r['purpose_norm'] == purpose_norm or norm(r['query']) == query_norm for r in rows):
+                "SELECT * FROM exploration_tasks WHERE created_at>=? ORDER BY created_at", (min(moment - cfg['dedup_seconds'], _day_start(moment)),))]
+            if any((r['purpose_norm'] == purpose_norm or norm(r['query']) == query_norm)
+                   and moment - r['created_at'] < cfg['dedup_seconds'] for r in rows):
                 return no('duplicate_purpose_or_query')
             today = [r for r in rows if r['created_at'] >= _day_start(moment)]
             if len(today) >= cfg['daily_opportunities']:

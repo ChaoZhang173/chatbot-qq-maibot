@@ -109,6 +109,17 @@ def _hydrate_search_paragraphs(payload: dict, store) -> dict:
         hydrated["content"] = str(row.get("content") or "")
         hydrated["source"] = str(row.get("source") or "")
         hydrated["metadata"] = dict(metadata)
+        # Event time lives in paragraph columns, not in the metadata JSON. Carry it
+        # separately so it can never be mistaken for permission metadata.
+        time_meta = {}
+        for key in ("event_time", "event_time_start", "event_time_end", "time_confidence"):
+            value = row.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                time_meta[key] = float(value)
+        if isinstance(row.get("time_granularity"), str):
+            time_meta["time_granularity"] = row["time_granularity"][:32]
+        if time_meta:
+            hydrated["time_meta"] = time_meta
         hits.append(hydrated)
     return {**payload, "hits": hits, "summary": "", "requires_scope_filter": True}
 

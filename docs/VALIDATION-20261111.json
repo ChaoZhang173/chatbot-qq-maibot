@@ -1,0 +1,43 @@
+{
+  "snapshot_date": "2026-11-11",
+  "persona_version": 59,
+  "public_pattern_scan": {
+    "pass": true,
+    "files_before_this_report": 417
+  },
+  "private_value_scan": {
+    "files_scanned": 417,
+    "protected_sources_loaded": 23,
+    "known_value_count": 48,
+    "matched_files": [],
+    "pass": true
+  },
+  "source_matches_backup": {
+    "pass": true,
+    "extension_files_matched": 176,
+    "host_overrides_matched": 20,
+    "declared_redactions": {
+      "extensions/qq_channel/qq_channel_runner.py": "The fixed account guard uses REPLACE_PRIVATELY in the public copy."
+    }
+  },
+  "syntax": {
+    "pass": true,
+    "counts": {
+      ".py": 952,
+      ".json": 64,
+      ".toml": 10
+    },
+    "note": "UTF-8 BOM accepted as Python source encoding marker."
+  },
+  "host_patch_dry_run": {
+    "pass": true,
+    "upstream": "MaiBot 1.3.14 wheel",
+    "changed_or_new_files": 20
+  },
+  "not_run": [
+    "Full historical behavioral suites",
+    "Live model/API calls",
+    "External test messages",
+    "Complete machine restore"
+  ]
+}

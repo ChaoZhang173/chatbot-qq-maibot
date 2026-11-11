@@ -86,7 +86,9 @@ def validate(data) -> dict:
         if not PROFILE_RE.match(pid):
             _fail("invalid profile id")
         _exact(entry, ("display_name", "preferred_address", "role", "enabled", "created_at", "qq"), "profile " + pid)
-        if entry["preferred_address"] is not None and not valid_address(entry["preferred_address"]):
+        # None keeps the historical display-name fallback; empty means explicitly
+        # no prescribed address. This changes presentation only.
+        if entry["preferred_address"] not in (None, "") and not valid_address(entry["preferred_address"]):
             _fail("profile " + pid + ": invalid preferred_address")
         name = entry["display_name"]
         if not isinstance(name, str) or not 1 <= len(name) <= 32 or re.search(r"[\x00-\x1f]", name):
@@ -134,6 +136,11 @@ def parse(raw) -> dict:
         if isinstance(exc, IdentityConfigError):
             raise
         raise IdentityConfigError("not valid JSON") from exc
+
+
+def spoken_address(profile: dict) -> str:
+    value = profile['preferred_address']
+    return profile['display_name'] if value is None else value
 
 
 def path_for(root) -> Path:

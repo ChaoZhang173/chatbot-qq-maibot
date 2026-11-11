@@ -24,6 +24,31 @@ def excerpt(text):
     return text if text and not PRIVATE.search(text) and not content_rules.blocked(text) else ''
 
 
+def _spread(reads,limit):
+    """Round-robin over browsing trips (newest trip first), so a binge on one kind of video (e.g. a run of dessert
+    clips in one session) does not crowd out everything else she looked at that day."""
+    groups={}
+    for e in sorted(reads,key=lambda x:float(x.get('occurred_at') or 0),reverse=True):
+        key=str(e.get('exploration_task') or (e.get('target') or {}).get('author') or e.get('event_id'))
+        groups.setdefault(key,[]).append(e)
+    picked=[]
+    for rank in range(limit):
+        for items in groups.values():
+            if rank<len(items):picked.append(items[rank])
+        if len(picked)>=limit:break
+    return sorted(picked[:limit],key=lambda x:float(x.get('occurred_at') or 0),reverse=True)
+
+
+def _motives(db,reads):
+    keys=list({str(e.get('exploration_task')) for e in reads if e.get('exploration_task')})
+    if not keys or not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='exploration_tasks'").fetchone():return {}
+    out={}
+    for row in db.execute('SELECT task_key,purpose FROM exploration_tasks WHERE task_key IN (%s)'%','.join('?'*len(keys)),keys):
+        purpose=excerpt(row['purpose'])
+        if purpose:out[row['task_key']]=purpose[:80]
+    return out
+
+
 def evidence(service,date,now):
     start,end=window(date,now);s=service.state;db=s.db;facts=[];actors=set()
     facts.append({'id':'day:'+date,'kind':'day','text':'日期'+date+'，记录截至北京时间'+datetime.fromtimestamp(now,TZ).strftime('%H:%M')+'的真实经历。'})
@@ -33,13 +58,17 @@ def evidence(service,date,now):
         if event.get('platform')!='bilibili' or not s.allowed(event,'bilibili','diary:'+date,'public'):continue
         events[event['event_id']]=event
     reads=[e for e in events.values() if e.get('event_type')=='content_read']
-    for event in reads[:8]:
+    motives=_motives(db,reads)
+    for event in _spread(reads,8):
         text=excerpt(event.get('content'))
         if not text:continue
         actor=str(event.get('actor_id') or (event.get('target') or {}).get('author') or '')
         actors.add(actor)
-        facts.append({'id':event['event_id'],'kind':'read','text':text,'actor_uid':actor,'time':datetime.fromtimestamp(event['occurred_at'],TZ).strftime('%H:%M'),
-                      'evidence':event.get('material_evidence','text'),'notice':'只读过这些实际材料，不能说完整看完视频、品尝或亲手制作。'})
+        fact={'id':event['event_id'],'kind':'read','text':text,'actor_uid':actor,'time':datetime.fromtimestamp(event['occurred_at'],TZ).strftime('%H:%M'),
+              'evidence':event.get('material_evidence','text'),'notice':'只读过这些实际材料，不能说完整看完视频、品尝或亲手制作。'}
+        motive=motives.get(str(event.get('exploration_task') or ''))
+        if motive:fact['my_motive']=motive   # her own reason for going to look, recorded when she decided to browse
+        facts.append(fact)
     for event in [e for e in events.values() if e.get('event_type')=='message_received' and e.get('origin')=='external_user'][:3]:
         text=excerpt(event.get('content'))
         if not text:continue
@@ -57,6 +86,8 @@ def evidence(service,date,now):
         if actor:actors.add(actor)
         source=events.get(a.get('trigger_event_id'),{})
         title=excerpt(source.get('content'))
+        # An operation without a known object ("操作已完成") only invites report-style counting; leave it out.
+        if not title and kind not in ('dynamic',):continue
         text=label+('了相关内容：'+title if title else '操作已完成')
         facts.append({'id':a['action_id'],'kind':kind,'text':text,'actor_uid':actor,'time':datetime.fromtimestamp(a['created_at'],TZ).strftime('%H:%M'),
                       'notice':'发布回执不代表所有人均能在评论列表看到。' if kind in ('proactive','reply') else ''})
@@ -98,9 +129,10 @@ async def draft(service,request):
     prompt=('先自己判断今天有没有值得发到B站的念头，不要求每天必须发。没什么想说的、素材只是重复或操作计数，就willing=false，当天不写；不能为了打卡硬凑。'
             '愿意发时写一条大肥鱼自己想说的动态，长度随内容，可以只有一句话，通常不超过250字，硬上限800字，没有最低字数。正文1至3个自然段，日期可在末尾单独一小行。'
             '先从素材里只挑一个让你惦记的小细节或互动，把它当整条动态的中心。第一句直接抛出反应、疑问或想法，像她随手想跟别人说点什么。'
-            '围绕这个中心自然展开自己的想法、偏爱、吐槽或一点点害羞，不必硬造脑洞或固定的嘴硬套路。用当下的口吻，不逐项交代自己先做什么又做什么，不复述整个事件经过。'
+            '围绕这个中心直接甩出自己最肆无忌惮的吐槽、偏爱或鬼点子，像在发朋友圈或碎碎念一样鲜活，严禁写自贬能力差的套路话，也不用交差式结尾。用当下的口吻，不逐项交代自己先做什么又做什么，不复述整个事件经过。'
             '浏览、群聊和图库是可选素材，不需要每类写一段；即使有qq_interaction也可以完全不写群聊。未选中的经历直接略去，不为了覆盖素材把无关事情串起来。'
             '不写今天先后来又晚上还的行程串联，不附点赞收藏次数、图库整理进度，不用今天就这样过去了或虽然没什么大事作为交差式结尾。'
+            'my_motive是你当时自己决定去看它的原因，可以从这份好奇心出发写，但不能把它写成已经得到的结论。'
             '可以只抓标题里一个有意思的词，或真实互动里的一个小转折，从中生出她现在的想法。少量事实自然带过即可，不把依据清单和阅读过程写进正文。'
             '主观反应、假设和未来打算可以鲜活夸张，但不能编造新的既成事件、别人的想法或不存在的对话。不强行煽情、总结成长、提炼人生道理或解释系统如何工作。'
             '只使用当天材料中实际采用的事实；fact_ids只列真正支撑这条动态的条目，不必把所有素材都用上。平静的一天可以短短说一个念头，旧人设只决定语气和喜好。'

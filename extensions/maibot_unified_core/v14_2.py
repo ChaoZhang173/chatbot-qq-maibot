@@ -21,12 +21,12 @@ BOUNDS = {
     ('feedback', 'parse_daily_limit'): (0, 50),
     ('impressions', 'window_days'): (1, 60), ('impressions', 'promotion_points'): (1, 50),
     ('impressions', 'min_gap_seconds'): (0, 86400),
-    ('daily_learning', 'hour'): (0, 23), ('daily_learning', 'max_batch_calls'): (1, 3),
-    ('daily_learning', 'max_retries'): (0, 2), ('daily_learning', 'batch_events'): (1, 10),
-    ('daily_learning', 'excerpt_chars'): (50, 600),
+    ('daily_learning', 'hour'): (0, 23), ('daily_learning', 'max_batch_calls'): (1, 5),
+    ('daily_learning', 'max_retries'): (0, 2), ('daily_learning', 'batch_events'): (1, 12),
+    ('daily_learning', 'excerpt_chars'): (50, 800),
     ('daily_learning', 'fresh_hours'): (12, 48), ('daily_learning', 'scope_cap'): (5, 50),
-    ('exploration', 'daily_opportunities'): (0, 3), ('exploration', 'cooldown_seconds'): (3600, 86400),
-    ('exploration', 'dedup_seconds'): (86400, 7 * 86400),
+    ('exploration', 'daily_opportunities'): (0, 10), ('exploration', 'cooldown_seconds'): (1200, 86400),
+    ('exploration', 'dedup_seconds'): (43200, 7 * 86400),
 }
 
 

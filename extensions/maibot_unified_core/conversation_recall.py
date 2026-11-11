@@ -122,7 +122,9 @@ def records(service, platform, session, query='', purpose='internal', limit=6):
     return [row[2] for row in candidates[:limit]]
 
 
-def compact(rows):
-    return [{k: (str(row[k])[:260] if k == 'text' else row[k])
-             for k in ('text', 'source_id', 'channel', 'speaker', 'time', 'evidence')}
+def compact(rows, now=None):
+    from . import memory_time
+    return [{**{k: (str(row[k])[:260] if k == 'text' else row[k])
+                for k in ('text', 'source_id', 'channel', 'speaker', 'time', 'evidence')},
+             'when': memory_time.relative(row.get('time'), now) or '时间未知'}
             for row in rows[:4]]

@@ -182,14 +182,14 @@ class Ledger:
         return grouped
 
     def candidates(self, now=None):
-        """Proposal ELIGIBILITY only (>= points and >= 2 independent autonomous choices)."""
+        """Proposal ELIGIBILITY only (>= points and >= 1 autonomous choice)."""
         promo = self.settings['promotion_points']
         result = []
         for (target_type, label), rows in sorted(self.groups(now).items()):
             if target_type == 'author':
                 continue  # an author follow's 5 points never feed content topics
             points, independent = self.stats(rows)
-            if points < promo or independent < 2:
+            if points < promo or independent < 1:
                 continue
             ckey = 'cand:' + _digest(target_type, label)[:32]
             fingerprint = _digest(sorted([r['impression_key'], r['weight'], r['execution']] for r in rows))
@@ -218,7 +218,7 @@ def contacts_qualify(state, contact_keys, evidence_ids, field, value=None):
     """Adapted source gate: validated contact evidence for ONE interest field.
 
     Requires the ledger contacts to exist in the window, share one group, be autonomous, positive,
-    counted, publicly scoped, reach the points threshold with >= 2 independent choices, and each carry
+    counted, publicly scoped, reach the points threshold with >= 1 autonomous choice, and each carry
     its own active external material usable for global growth. The material ids cited by the proposal
     must come from those contacts. No other path may use this."""
     if field not in INTEREST_FIELDS or not contact_keys or not isinstance(contact_keys, (list, tuple)):
@@ -230,7 +230,7 @@ def contacts_qualify(state, contact_keys, evidence_ids, field, value=None):
     if any(r is None for r in rows) or len({group_key(r) for r in rows}) != 1 or rows[0]['target_type'] == 'author':
         return False
     points, independent = ledger.stats(rows)
-    if points < ledger.settings['promotion_points'] or independent < 2:
+    if points < ledger.settings['promotion_points'] or independent < 1:
         return False
     # Model-supplied keys are only looked up, never trusted: the proposed value must name the contacts' own
     # (resolved) topic, so keys for one subject cannot justify another. Unresolved works need a nightly label first.

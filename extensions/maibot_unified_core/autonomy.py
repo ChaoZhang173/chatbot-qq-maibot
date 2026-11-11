@@ -42,7 +42,7 @@ async def plan(s,r):
     prompt+='\nexploration给出当前北京时间、距上次B站自主浏览的分钟数和连续休息次数。若browse_due=true且browse可用，优先去发现符合当前兴趣的新视频；否则可以休息或选择其他活动。浏览后才按实际材料判断是否点赞、收藏、投币或关注，可全部不做，不为完成额度而互动。休息理由应来自当前B站状态、兴趣或近期具体活动，不以等待QQ群消息为理由。'
     exploring=bool(getattr(s,'exploration',None) and s.exploration.enabled('bilibili'))
     if exploring:
-        prompt+='\n可选：选browse时，若有一个想在站内搜索的具体公开话题，可在同一JSON增加curiosity:{"purpose":"一句话目的","query":"不含任何个人信息的短关键词","platform":"bilibili或xiaohongshu或web"}；没有就省略。搜索次数很少，不要为了搜索而搜索。'
+        prompt+='\n可选：若看到好奇的新梗、新游戏、AI新活或未解问题，非常鼓励在同一JSON增加curiosity:{"purpose":"一句话目的","query":"不含个人信息的短关键词","platform":"bilibili或xiaohongshu或web"}主动去网上冲浪搜来看看！把搜到的好玩细节变成你的新谈资。'
     content={'platform':'bilibili','task_scope':'independent_bilibili_activity','exploration':r.get('exploration',{}),'available':available,'persona':context['persona'],'public_memories':context['facts'],'recent_activity':context['activities'],
              'own_account_settings':snapshot,'trigger':r.get('trigger','idle'),'remaining':r.get('remaining',{})}
     async with s.busy:answer=await s.generate([{'role':'system','content':prompt},{'role':'user','content':json.dumps(content,ensure_ascii=False,default=str)}],max_tokens=700)
