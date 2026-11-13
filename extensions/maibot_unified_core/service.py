@@ -807,7 +807,7 @@ class UnifiedService:
                else [conversation_id,*self.policy.get('public_qq_sessions',[])])
         chats=list(dict.fromkeys([*chats,'bilibili:public']))
         query=str(query or '最近共同经历 兴趣 游戏 AI 美食')[:400]
-        speaker=qq_identity_context.current(self,conversation_id) if platform=='qq' and purpose=='internal' else {}
+        speaker=qq_identity_context.current(self,conversation_id) if platform=='qq' and purpose=='internal' and task!='qq_proactive' else {}
         identifying=platform=='qq' and purpose=='internal' and qq_identity_context.self_identity_query(query)
         memory_ok=True
         async def search_chat(chat):
@@ -841,7 +841,7 @@ class UnifiedService:
         if speaker:result['current_speaker']=speaker
         result['conversation_records']=[] if identifying else conversation_recall.records(self,platform,conversation_id,query,purpose)
         result['source_ids']+= [x['source_id'] for x in result['conversation_records']]
-        relationship=self.relationship_texts(platform,conversation_id)
+        relationship=self.relationship_texts(platform,conversation_id) if task!='qq_proactive' else []
         if relationship:result['relationship']=relationship
         self.state.audit_context(task,platform,conversation_id,result['source_ids'],persona.get('version'),permissions=[],model_task='replyer')
         return result

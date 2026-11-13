@@ -132,7 +132,28 @@ def decorate(service, result, kwargs):
     return result
 
 
-def stage(service, session, mid, args, response):
+async def prepare_and_stage(service, session, mid, args, response):
+    """Check the final prose against this turn's exact evidence before authorizing it."""
+    snap = snapshot(service, session, mid, (args or {}).get('_experience_token', ''))
+    if not snap:
+        # Preserve the existing closed path if recall was revoked mid-turn.
+        return stage(service, session, mid, args, response)
+    if not response or snap.get('invalid') or not view.valid(service, snap): return ''
+    from .experience_check import correct, fallback
+    evidence = view.model_view(snap)
+    event = event_for(service, session, mid)
+    checked = await correct(service, response, evidence, (event or {}).get('content', '')[:600])
+    # A timeout, rejected draft or malformed answer never revives the unchecked prose.
+    text = checked if checked is not None else fallback(evidence)
+    service.reload_policy()
+    if not enabled(service, 'recall') or not view.valid(service, snap): return ''
+    from . import content_rules
+    from .receipts import looks_internal
+    if content_rules.blocked(text) or looks_internal(text): return ''
+    return stage(service, session, mid, args, text, quality_checked=True)
+
+
+def stage(service, session, mid, args, response, *, quality_checked=False):
     snap = snapshot(service, session, mid, (args or {}).get('_experience_token', ''))
     if not snap:
         prior = [v for (scope, _), v in getattr(service, '_experience_requests', {}).items()
@@ -145,9 +166,17 @@ def stage(service, session, mid, args, response):
     clean = sharing.sanitize(response, service, ids=ids, protected=protected)
     stages = getattr(service, '_experience_stages', None)
     if stages is None: service._experience_stages = stages = {}
-    stages[(session, snap['target'])] = {'snapshot': snap, 'text': clean, 'at': time.time()}
+    stages[(session, snap['target'])] = {'snapshot': snap, 'text': clean, 'at': time.time(),
+                                        'quality_checked': quality_checked is True}
     while len(stages) > 64: stages.pop(next(iter(stages)))
     return clean
+
+
+def is_checked_response(service, session, mid, text):
+    """Host may still split checked prose, but must not synthesize typos or correction text."""
+    return any(scope == session and mid in (target, service.qq_display_message_id(target))
+               and entry.get('quality_checked') is True and entry['text'] == text
+               for (scope, target), entry in getattr(service, '_experience_stages', {}).items())
 
 
 def send_stage(service, message, target=''):
@@ -155,7 +184,10 @@ def send_stage(service, message, target=''):
     body = sent_text(service, m)
     target = str(target or m.get('reply_to') or '')
     for (scope, mid), entry in getattr(service, '_experience_stages', {}).items():
-        if scope == session and (target == mid or target == service.qq_display_message_id(mid)) and body and body in entry['text']:
+        # Both Host splitters retain original prose; the rule splitter can collapse line breaks.
+        normalized_body = ' '.join(body.split())
+        normalized_text = ' '.join(entry['text'].split())
+        if scope == session and (target == mid or target == service.qq_display_message_id(mid)) and normalized_body and normalized_body in normalized_text:
             return entry
     return None
 
@@ -179,13 +211,14 @@ def before_send(service, message, target=''):
                         for (scope, _), v in getattr(service, '_experience_requests', {}).items())
         return not (staged or requested)
     service.reload_policy()
-    return (enabled(service, 'recall') and time.time()-entry['at'] < 600 and view.valid(service, entry['snapshot']))
+    return (entry.get('quality_checked') is True and enabled(service, 'recall')
+            and time.time()-entry['at'] < 600 and view.valid(service, entry['snapshot']))
 
 
 def after_send(service, message, sent, target=''):
     if not sent: return
     entry = send_stage(service, message, target)
-    if not entry: return
+    if not entry or entry.get('quality_checked') is not True: return
     snap = entry['snapshot']; m, _, _, session = service.qq_fields(message)
     text = sent_text(service, m)
     def match(item):

@@ -234,7 +234,7 @@ class Recall(Fixture):
 
     def test_anchor_advances_only_after_success_same_actor_and_topic(self):
         self.add('one','太空蔬菜的种植介绍');self.add('two','深海鱼如何适应水压');self.incoming()
-        text=runtime.stage(self.s,'group','question',{},'刚读了太空蔬菜的种植介绍。')
+        text=runtime.stage(self.s,'group','question',{},'刚读了太空蔬菜的种植介绍。',quality_checked=True)
         msg=self.message(text)
         runtime.after_send(self.s,msg,False);self.assertEqual(self.s.state.get(runtime.anchor_key('group','200'),{}),{})
         runtime.after_send(self.s,msg,True)
@@ -247,7 +247,7 @@ class Recall(Fixture):
 
     def test_final_send_rechecks_policy(self):
         self.add('one','太空蔬菜的种植介绍');self.incoming()
-        text=runtime.stage(self.s,'group','question',{},'刚读了太空蔬菜的种植介绍。')
+        text=runtime.stage(self.s,'group','question',{},'刚读了太空蔬菜的种植介绍。',quality_checked=True)
         self.assertTrue(runtime.before_send(self.s,self.message(text)))
         p=copy.deepcopy(self.policy);p['experience_features']['recall']=False
         (self.root/'policy.json').write_text(json.dumps(p))

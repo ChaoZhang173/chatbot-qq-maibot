@@ -115,6 +115,29 @@ def valid_refs(service, refs):
     return True
 
 
+def bind_reply_links(records, events):
+    """Expose only unambiguous links to an earlier record in this same visible window."""
+    visible = {r['source_id'] for r in records}
+    aliases = {}
+    for event in events:
+        target = event['event_id']
+        if target not in visible:
+            continue
+        for field in ('event_id', 'source_id', 'native_event_id', 'message_id'):
+            alias = str(event.get(field) or '')
+            if alias:
+                aliases.setdefault(alias, set()).add(target)
+    earlier = set()
+    for record in records:
+        raw = str(record.get('reply_to') or '')
+        targets = aliases.get(raw, set())
+        resolved = next(iter(targets)) if len(targets) == 1 else ''
+        record['reply_to_source_id'] = resolved if resolved in earlier else ''
+        record['reply_relation'] = ('verified' if record['reply_to_source_id'] else
+                                    'unresolved' if raw else 'unspecified')
+        earlier.add(record['source_id'])
+
+
 def collect(service, start, end, limit=6):
     if not enabled(service, 'sharing'):
         return []
@@ -160,12 +183,16 @@ def collect(service, start, end, limit=6):
         if not records or not own.strip() or content_rules.blocked(own):
             continue
         records.append({'speaker': '大肥鱼', 'text': own[:500], 'evidence_kind': 'confirmed_sent_speech', 'source_id': reply['action_id'], 'reply_to': reply.get('reply_to', '')})
+        # Both model renderers keep the last four records. Resolve against that
+        # same view so a verified target cannot disappear during later truncation.
+        records = records[-4:]
+        bind_reply_links(records, events)
         refs = [reference(service, 'event', e) for e in events] + [reference(service, 'action', reply)]
         item = {'id': 'conversation:' + digest([r['id'] for r in refs])[:20], 'kind': 'conversation',
                 'scene': 'group_chat' if group else 'private_chat',
                 'at': stamp, 'group_id': sanitize(group, service, ids=ids, protected=protections, identity=True), 'records': records,
                 'source_refs': refs, 'policy_version': version(service),
-                'notice': '各句仅证明说过。场景按scene，不把私聊写成群聊。相邻发言不证明直接回复或现实事件发生，保留玩笑/转述语气。'}
+                'notice': '各句仅证明说过。场景按scene，不把私聊写成群聊。仅reply_relation=verified时，reply_to_source_id指向本窗口中实际回复的source_id；unresolved或unspecified不证明回复谁。相邻发言不证明直接回复或现实事件发生，保留玩笑/转述语气。'}
         found.append(item); used.update(e['event_id'] for e in events)
     # Keep several trips/time bands, not only the longest or newest conversation.
     if len(found) > limit:

@@ -1,0 +1,41 @@
+{
+  "status": "deployed",
+  "targeted_tests": 152,
+  "targeted_failures": 0,
+  "experience_tests": 45,
+  "diary_reply_group_tests": 107,
+  "historical_full_suite": {
+    "tests": 973,
+    "existing_failure_entries": 53,
+    "baseline_reproduced": true,
+    "rerun_this_turn": false
+  },
+  "new_model_calls": 13,
+  "new_model_tokens": 12652,
+  "max_observed_check_seconds": 1.621,
+  "provider": "api.deepseek.com",
+  "model": "deepseek-flash",
+  "test_messages_sent": 0,
+  "test_diaries_published": 0,
+  "acceptance": "targeted_regressions_passed",
+  "limits": [
+    "retained examples plus synthetic group cases; not a statistical naturalness study",
+    "model review may conservatively decline ambiguous proactive drafts",
+    "existing full-suite failures retained in the historical report"
+  ],
+  "deployed_at": "2026-11-13T15:50:24.664221+08:00",
+  "deployed_files": 20,
+  "production_hashes_match": true,
+  "production_services": {
+    "maibot": "active",
+    "bilibot": "active",
+    "dafeiyu-qq": "active",
+    "dafeiyu-passport": "active"
+  },
+  "enabled_features": {
+    "recall": true,
+    "sharing": true,
+    "diary": true,
+    "web": true
+  }
+}

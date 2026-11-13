@@ -238,8 +238,10 @@ class UnifiedCorePlugin(MaiBotPlugin):
             response = ""
         allowed = self.service.guard_qq_reply(str(session_id), str(reply_message_id), reply_tool_args or {})
         if allowed and VOICE_SCOPE.get() is None:
-            from .experience_runtime import stage
-            response = stage(self.service, str(session_id), str(reply_message_id), reply_tool_args, response)
+            from .experience_runtime import prepare_and_stage, is_checked_response
+            response = await prepare_and_stage(self.service, str(session_id), str(reply_message_id), reply_tool_args, response)
+            if is_checked_response(self.service, str(session_id), str(reply_message_id), response):
+                kwargs['enable_chinese_typo'] = False
         scope = VOICE_SCOPE.get()
         if allowed and response and scope is not None:
             scope["voice_style"] = normalize_style((reply_tool_args or {}).get("voice_style"))
