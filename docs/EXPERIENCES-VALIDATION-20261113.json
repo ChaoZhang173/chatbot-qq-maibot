@@ -1,8 +1,8 @@
 {
   "status": "candidate_not_deployed",
   "base_commit": "15f245c",
-  "new_tests": 26,
-  "full_tests_run": 971,
+  "new_tests": 28,
+  "full_tests_run": 973,
   "existing_failure_entries": 53,
   "new_failure_entries": 0,
   "checks": [
@@ -125,14 +125,14 @@
     },
     {
       "suite_index": 10,
-      "tests_run": 26,
+      "tests_run": 28,
       "failure_entries": [],
       "new_failure_entries": []
     }
   ],
   "model_replay": {
-    "calls": 21,
-    "total_tokens": 79330,
+    "calls": 27,
+    "total_tokens": 103535,
     "provider": "api.deepseek.com",
     "model": "deepseek-flash",
     "real_public_reads": 23,

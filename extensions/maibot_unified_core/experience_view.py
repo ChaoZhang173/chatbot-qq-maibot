@@ -49,6 +49,8 @@ def window(query, now):
 def public_web_allowed(service, event, depth=0):
     if not enabled(service, 'web') or depth > 4 or event.get('active') is False:
         return False
+    if event.get('is_private') or event.get('sensitive') or (event.get('metadata') or {}).get('is_private'):
+        return False
     if event.get('platform') != 'web' or event.get('bot_account_id') != 'public-web' or event.get('sharing_scope') != 'public':
         return False
     task = event.get('exploration_task') or (event.get('metadata') or {}).get('exploration_task')

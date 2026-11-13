@@ -61,8 +61,13 @@ def observe_exclusion(service, event):
         key = 'experience_segments:' + event['conversation_id']
         rows = service.state.get(key, [])
         if not any(r['event_id'] == event['event_id'] for r in rows):
+            quoted = (event.get('metadata') or {}).get('reply_to')
+            selected = []
+            if quoted:
+                row = service.state.db.execute("SELECT event_id FROM events WHERE platform='qq' AND conversation_id=? AND actor_id=? AND json_extract(payload,'$.source_id')=? AND active=1",(event['conversation_id'],event['actor_id'],str(quoted))).fetchone()
+                if row:selected.append(row[0])
             rows.append({'event_id':event['event_id'], 'actor':event['actor_id'],
-                         'start':event['occurred_at']-180, 'end':event['occurred_at']})
+                         'start':event['occurred_at']-180, 'end':event['occurred_at'],'selected_ids':selected})
             service.state.put(key, rows)
         return
     if excluded is not None:
@@ -76,7 +81,7 @@ def excluded(service, actor):
 
 def source_excluded(service, source):
     if excluded(service, source.get('actor_id')): return True
-    return any(r['actor'] == source.get('actor_id') and r['start'] <= source.get('occurred_at', 0) <= r['end']
+    return any(r['actor'] == source.get('actor_id') and (r['start'] <= source.get('occurred_at', 0) <= r['end'] or source.get('event_id') in r.get('selected_ids',[]))
                for r in service.state.get('experience_segments:' + source.get('conversation_id',''), []))
 
 

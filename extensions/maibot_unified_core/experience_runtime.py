@@ -7,6 +7,8 @@ import re
 from . import experience_view as view, shareable_experience as sharing
 from .experience_policy import enabled, prompt, version, digest
 
+RULES_MARKER = '[self-experience-rules-v1]\n'
+
 
 def event_for(service, session, message_id=''):
     last = service.last_message.get(session)
@@ -91,14 +93,20 @@ def plan_output(service, session, items):
 
 
 def decorate(service, result, kwargs):
+    modified = result.get('modified_kwargs')
+    if not isinstance(modified, dict): return result
+    items = []
+    for item in modified.get('items', []):
+        if str((item.get('meta') or {}).get('item_id','')).startswith('experience-context-'):continue
+        if item.get('item_type') == 'SystemMessageItem':
+            item = {**item, 'parts':[p for p in item.get('parts',[]) if not (p.get('type')=='text' and str(p.get('text','')).startswith(RULES_MARKER))]}
+        items.append(item)
+    modified['items'] = items
     if not enabled(service, 'recall') or kwargs.get('request_kind') == 'expression_selector': return result
     session = str(kwargs.get('session_id') or '')
     args = kwargs.get('reply_tool_args') or {}
     mid = str(kwargs.get('reply_message_id') or '')
     snap = snapshot(service, session, mid, args.get('_experience_token', ''))
-    modified = result.get('modified_kwargs')
-    if not isinstance(modified, dict): return result
-    items = [i for i in modified.get('items', []) if not str((i.get('meta') or {}).get('item_id', '')).startswith('experience-context-')]
     if not snap:
         modified['items'] = items; return result
     # The actual Host supplies the original reference/reason in the hook. Remove that item,
@@ -107,7 +115,15 @@ def decorate(service, result, kwargs):
     rejected.discard('')
     items = [i for i in items if not (i.get('item_type') == 'UserMessageItem' and
         ''.join(str(p.get('text', '')) for p in i.get('parts', []) if p.get('type') == 'text').strip() in rejected)]
-    text = prompt('experience_facts') + '\n' + prompt('natural_expression') + '\nself_experiences=' + json.dumps(view.model_view(snap), ensure_ascii=False)
+    # Only trusted rules become system instructions. Retrieved text remains untrusted user material.
+    rules = {'type':'text','text':RULES_MARKER+prompt('experience_facts')+'\n'+prompt('natural_expression')}
+    for index,item in enumerate(items):
+        if item.get('item_type') == 'SystemMessageItem':
+            items[index] = {**item,'parts':[*(item.get('parts') or []),rules]}
+            break
+    else:
+        items.insert(0,{'item_type':'SystemMessageItem','meta':{'item_id':'experience-context-rules-'+snap['token']},'parts':[rules]})
+    text = 'self_experiences=' + json.dumps(view.model_view(snap), ensure_ascii=False)
     event = event_for(service, session, mid)
     if event: text += '\n当前对方问：' + event.get('content', '')[:600] + '\n直接接这句话；上面是可用材料，不是逐项复述的提纲。'
     items.append({'item_type': 'UserMessageItem', 'meta': {'item_id': 'experience-context-'+snap['token']},
