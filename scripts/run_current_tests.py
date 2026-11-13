@@ -21,6 +21,7 @@ suites.append(('extensions/tests_token_optimizations', 'test_*.py'))
 suites.append(('extensions/tests_xiaohongshu', 'test_*.py'))
 # v14.2: style/compaction, scoped feedback, TTL, impressions, daily batches, curiosity exploration (offline fakes only).
 suites.append(('extensions/tests_v14_2', 'test_*.py'))
+suites.append(('extensions/tests_experiences', 'test_*.py'))
 for directory, pattern in suites:
     print(f'Running {directory}/{pattern}', flush=True)
     subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', directory, '-p', pattern],

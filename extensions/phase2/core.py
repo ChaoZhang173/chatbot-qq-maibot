@@ -476,6 +476,7 @@ class Sender:
         recipient="",
         memory=None,
         media=None,
+        pre_dispatch=None,
     ):
         if media and (kind!='dynamic' or len(media)!=1):raise Denied('invalid_dynamic_images')
         c = load_config(self.config_path,self.now())
@@ -518,6 +519,11 @@ class Sender:
             self.s.update(key, status="failed", error="date_changed_during_generation")
             return {"status": "skipped"}
         self.identity(c2)
+        if pre_dispatch is not None:
+            try:pre_dispatch()
+            except Exception:
+                self.s.update(key, status='failed', error='evidence_changed')
+                return {'status':'failed','reason':'evidence_changed'}
         # The gap is measured from the actual dispatch boundary, not generation start.
         self.s.db.execute("update actions set created=? where id=?", (self.now(), key))
         self.s.update(key, status="sending", text=text)

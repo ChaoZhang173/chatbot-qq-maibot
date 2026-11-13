@@ -15,7 +15,7 @@ from .store import CHINA
 from .content_rules import RULE, blocked
 from .persona import CONTEXT_RULE
 from .voice_style import RULE as STYLE_RULE
-from . import memory_time, capabilities
+from . import memory_time, capabilities, group_audience, experience_check
 from .agenda import Agenda, REMINDER_LATE
 
 PAUSE_DAYS=7
@@ -39,7 +39,7 @@ VOLUNTARY=('你是同一个大肥鱼。现在是你自己的空闲时间，看�
            '就willing=false，这很正常，不需要理由。\n'
            '想说的话像平时在QQ上随手发消息一样：想到哪句说哪句，1至2句干脆的大白话，不铺垫前因后果，不播报，'
            '不用“刚刷到……不过我这水平……”这种先抑后扬的套路，也不用“就这么愉快的决定啦~”这种做作腔调。'
-           'own_recent_topics是你最近5次主动说的话和对方的反应，只用来避免重复，不是事实来源：这次换个不同的切入点和句式；'
+           'own_recent_topics是你近期主动说的话和之后各人的发言，只用来避免重复，不是事实来源，也不保证后面的发言在回应你：这次换个不同的切入点和句式；'
            '对方回了问号、“什么X”、否认或没接的话题，说明对方不认，不要再追着提。私聊内容不带去群聊。'
            '输出JSON {"willing":true或false,"text":"最多280字","next_check_minutes":可选，你想隔多久再看看要不要找对方（30到480之间的整数）}。')
 REMINDER=('你是大肥鱼。现在到了对方之前让你提醒的时间（reminder是要提醒的事，user_asked是对方当时的原话）。'
@@ -160,12 +160,19 @@ class ProactiveQQ:
         return float(last)+7200 if last else 0.0     # first run after upgrade keeps the old two-hour spacing once
 
     def unanswered_streak(self,session,limit=6):
-        rows=[float(r[0]) for r in self.db.execute("SELECT created FROM qq_proactive_attempts WHERE session=? AND status IN ('sent','unknown') AND text<>'' ORDER BY created DESC LIMIT ?",(session,limit))]
+        rows=[dict(r) for r in self.db.execute("SELECT id,text,created FROM qq_proactive_attempts WHERE session=? AND status IN ('sent','unknown') AND text<>'' ORDER BY created DESC LIMIT ?",(session,limit))]
         account=str(self.s.policy.get('qq_bot_account',''));streak=0;end=None
-        for start in rows:
-            q="SELECT 1 FROM events WHERE platform='qq' AND bot_account_id=? AND conversation_id=? AND origin='external_user' AND active=1 AND received_at>?"
+        group=group_audience.is_group(self.s,session)
+        participants=group_audience.people(self.s,session,time.time()) if group else []
+        for row in rows:
+            start=float(row['created'])
+            q="SELECT 1 FROM events WHERE platform='qq' AND bot_account_id=? AND conversation_id=? AND origin='external_user' AND active=1 AND occurred_at>?"
             args=[account,session,start]
-            if end is not None:q+=' AND received_at<=?';args.append(end)
+            if group:
+                target_ids=group_audience.targets(self.s,row,participants)
+                if target_ids:
+                    q+=' AND actor_id IN ('+','.join('?' for _ in target_ids)+')';args.extend(sorted(target_ids))
+            q+=' AND occurred_at<=?';args.append(end if end is not None else time.time())
             if self.db.execute(q+' LIMIT 1',args).fetchone():break
             streak+=1;end=start
         return streak
@@ -260,13 +267,16 @@ class ProactiveQQ:
         hint=None
         try:
             context=await self.s.build_context('qq_proactive','qq',session,'当前兴趣和最近经历',purpose='internal')
+            context.pop('current_speaker',None)
+            context.pop('relationship',None)
             context['daily_learning_items']=[{**x,'when':memory_time.relative(x.get('occurred_at'),now)} for x in self.s.daily.recent_items('qq',session,hours=24)]
             current=context.get('persona',{}).get('dynamic',{})
             for field in ('current_focus','current_state'):
                 if field in current:context[field]=current[field]
             self.annotate_times(context,now)
-            rows=self.recent_messages(session,c['account'],d['kind'],now)
-            own_topics=self.own_topics(session,now)
+            participants=group_audience.people(self.s,session,now) if d['kind']=='group' else None
+            rows=self.recent_messages(session,c['account'],d['kind'],now,participants=participants)
+            own_topics=self.own_topics(session,now,participants=participants)
             paused=self.paused_terms(session,now)
             if paused:
                 # 'field', not 'key': the attempt id above must survive this loop.
@@ -276,6 +286,7 @@ class ProactiveQQ:
                 own_topics=[x for x in own_topics if not _mentions(x,paused)]
             prompt=RULE+'\n'+CONTEXT_RULE+'\n'+VOLUNTARY
             prompt+='\n'+BOUNDARY+capabilities.text(self.s,session,'qq')+self.agenda.context(session,now)
+            if participants is not None:prompt+='\n'+group_audience.RULE
             if followup:
                 prompt+=('\n这次是你之前自己记下的打算（followup）：'+followup['content']+'（'+(memory_time.relative(followup['created'],now) or '')+
                          '记的）。现在想说就自然地说；时机不对、没兴致了或已经聊过了就willing=false。')
@@ -286,7 +297,9 @@ class ProactiveQQ:
                     prompt += ('你可以按自己的表达偏好、心情和内容，自主选择语音或文字，也可以连续用语音。'
                                '没有语音次数或间隔要求，不需要偏向文字。对方不方便听或要求文字时尊重对方。'
                                'JSON可增加delivery="voice"或"text"、mood="neutral"/"pleased"/"gentle"/"serious"/"puzzled"、voice_style="可选的简短整体语气描述，也可留空"。') + STYLE_RULE
-                answer=await self.s.generate([{'role':'system','content':prompt},{'role':'user','content':json.dumps({'now':memory_time.now_line(now),'context':context,'recent_messages':rows,'own_recent_topics':own_topics,'destination':d['kind']},ensure_ascii=False,default=str)}],max_tokens=520,temperature=0.85)
+                payload={'now':memory_time.now_line(now),'context':context,'recent_messages':rows,'own_recent_topics':own_topics,'destination':d['kind']}
+                if participants is not None:payload['participants']=participants
+                answer=await self.s.generate([{'role':'system','content':prompt},{'role':'user','content':json.dumps(payload,ensure_ascii=False,default=str)}],max_tokens=520,temperature=0.85)
             hint=answer.get('next_check_minutes')
             text=answer.get('text','')
             if answer.get('willing') is not True or not isinstance(text,str) or not 1<=len(text.strip())<=280 or blocked(text):
@@ -295,13 +308,36 @@ class ProactiveQQ:
             if hit:
                 self.db.execute('UPDATE qq_proactive_attempts SET status=? WHERE id=?',('declined',key))
                 self.watch('paused_topic_blocked',session,text,hit);return {'status':'declined','reason':'paused_topic'}
+            audience=None
+            if participants is not None:
+                audience=group_audience.selection(self.s,session,answer,participants,time.time())
+                if audience is None:
+                    self.db.execute('UPDATE qq_proactive_attempts SET status=? WHERE id=?',('declined',key))
+                    self.watch('invalid_group_audience',session,text);return {'status':'declined','reason':'group_audience'}
+                # Every group draft is reviewed, including unbound names that no regex can enumerate.
+                async with self.s.busy:
+                    checked=await experience_check.correct(self.s,text,{'status':'group_context','items':[]},
+                        group_audience={'audience':audience,'participants':participants,'recent_messages':rows,
+                                        'self_context':context},timeout=3.4)
+                if not checked or not 1<=len(checked)<=280 or blocked(checked) or any(t in checked for t in paused):
+                    self.db.execute('UPDATE qq_proactive_attempts SET status=? WHERE id=?',('declined',key))
+                    return {'status':'declined','reason':'group_evidence'}
+                text=checked;answer={**answer,'text':text}
             if SHARED_CLAIM.search(text):self.watch('shared_claim',session,text)
             self.s.reload_policy()
             c2=settings(self.s.policy)
             if not c2 or c2.get('proactive_enabled') is not True or d not in self.destinations() or self.latest_external(session)!=latest or self.quiet(session):
                 self.db.execute('UPDATE qq_proactive_attempts SET status=? WHERE id=?',('cancelled',key));return {'status':'cancelled'}
+            if participants is not None:
+                audience=group_audience.selection(self.s,session,answer,participants,time.time())
+                if audience is None:
+                    self.db.execute('UPDATE qq_proactive_attempts SET status=? WHERE id=?',('cancelled',key));return {'status':'cancelled'}
+                self.s.state.put(group_audience.target_key(key),audience)
+            def still_allowed():
+                return (self.latest_external(session)==latest and
+                    (participants is None or group_audience.selection(self.s,session,answer,participants,time.time(),exclude_attempt=key) is not None))
             self.s.state.audit_context('qq_proactive','qq',session,context.get('source_ids',[]),context['persona']['version'],permissions=['scoped_proactive_qq'],model_task='replyer')
-            return await self.send(key,d,text.strip(),delivery=answer.get('delivery'),mood=answer.get('mood'),voice_style=answer.get('voice_style'))
+            return await self.send(key,d,text.strip(),delivery=answer.get('delivery'),mood=answer.get('mood'),voice_style=answer.get('voice_style'),still_allowed=still_allowed)
         except Exception:
             self.db.execute("UPDATE qq_proactive_attempts SET status='failed' WHERE id=? AND status='reserved'",(key,))
             return {'status':'failed'}
@@ -320,36 +356,49 @@ class ProactiveQQ:
                 w=memory_time.relative(a.get('created') or a.get('created_at') or a.get('occurred_at'),now)
                 if w:a['when']=w
 
-    def recent_messages(self,session,account,kind,now,limit=12):
-        """Both sides of the recent conversation in order: the user's words and her own delivered lines."""
+    def recent_messages(self,session,account,kind,now,limit=12,participants=None):
+        """Chronological messages keep their author and source; bot history is not evidence."""
         items=[]
-        for row in self.db.execute("SELECT payload FROM events WHERE conversation_id=? AND platform='qq' AND bot_account_id=? AND active=1 ORDER BY received_at DESC LIMIT ?",(session,account,limit)):
-            e=json.loads(row['payload'])
-            mine=e.get('origin')=='bot_self'
+        for row in self.db.execute("SELECT payload FROM events WHERE conversation_id=? AND platform='qq' AND bot_account_id=? AND active=1 AND occurred_at<=? ORDER BY occurred_at DESC,received_at DESC LIMIT ?",(session,account,now,limit)):
+            e=json.loads(row['payload']);mine=e.get('origin')=='bot_self'
             who='我' if mine else ('对方' if kind=='private' else str(e.get('nickname') or '群友')[:40])
-            items.append((float(e.get('occurred_at') or 0),who,str(e.get('content') or '')))
-        for row in self.db.execute("SELECT payload FROM activities WHERE platform='qq' AND conversation_id=? AND status='succeeded' ORDER BY created_at DESC LIMIT ?",(session,limit)):
+            text=str(e.get('content') or '')
+            if mine and participants is not None:text=group_audience.hide_address(text,participants)
+            items.append({'at':float(e.get('occurred_at') or 0),'who':who,'text':text,'user_id':str(e.get('actor_id') or ''),
+                          'event_id':e['event_id'],'origin':e.get('origin'),'is_evidence':not mine})
+        for row in self.db.execute("SELECT payload FROM activities WHERE platform='qq' AND conversation_id=? AND status='succeeded' AND created_at<=? ORDER BY created_at DESC LIMIT ?",(session,now,limit)):
             a=json.loads(row['payload'])
             if a.get('receipt_verified') is not True or a.get('kind') not in ('reply','proactive','reminder'):continue
             t,text=float(a.get('created') or a.get('created_at') or 0),str(a.get('content') or a.get('text') or '')
-            if any(w=='我' and x==text and abs(s-t)<120 for s,w,x in items):continue   # same line already seen
-            items.append((t,'我',text))
-        items=[x for x in items if x[2].strip()]
-        items.sort(key=lambda x:x[0],reverse=True)
-        return [{'who':who,'when':memory_time.relative(t,now) or '时间未知','text':text[:200]} for t,who,text in reversed(items[:limit])]
+            if participants is not None:text=group_audience.hide_address(text,participants)
+            if any(x['who']=='我' and x['text']==text and abs(x['at']-t)<120 for x in items):continue
+            items.append({'at':t,'who':'我','text':text,'user_id':str(account),'event_id':a.get('action_id'),
+                          'origin':'bot_self','is_evidence':False})
+        items=[x for x in items if x['text'].strip()]
+        items.sort(key=lambda x:x['at'],reverse=True)
+        return [{**x,'when':memory_time.relative(x['at'],now) or '时间未知','text':x['text'][:200]} for x in reversed(items[:limit])]
 
-    def own_topics(self,session,now):
-        """Her last 5 proactive lines, each paired with what the user actually said back."""
-        rows=[dict(r) for r in self.db.execute("SELECT text,created FROM qq_proactive_attempts WHERE session=? AND status IN ('sending','sent','unknown') AND text<>'' ORDER BY created DESC LIMIT 5",(session,))]
-        account=str(self.s.policy.get('qq_bot_account',''))
+    def own_topics(self,session,now,participants=None):
+        """Prior openers are only deduplication hints; later messages keep their own authors."""
+        group=group_audience.is_group(self.s,session)
+        if group and participants is None:participants=group_audience.people(self.s,session,now)
+        rows=[dict(r) for r in self.db.execute("SELECT id,text,created FROM qq_proactive_attempts WHERE session=? AND status IN ('sending','sent','unknown') AND text<>'' AND created<=? ORDER BY created DESC LIMIT ?",(session,now,3 if group else 5))]
         out=[]
         for i,r in enumerate(rows):
             start=float(r['created']);end=min(float(rows[i-1]['created']) if i else now,start+6*3600)
-            replies=[json.loads(x['payload']).get('content') for x in self.db.execute(
-                "SELECT payload FROM events WHERE platform='qq' AND bot_account_id=? AND conversation_id=? AND origin='external_user' AND active=1 AND received_at>? AND received_at<=? ORDER BY received_at LIMIT 3",
-                (account,session,start,end))]
-            replies=[str(x)[:120] for x in replies if x]
-            out.append({'when':memory_time.relative(start,now),'i_said':r['text'],'their_reaction':replies or '没有回应'})
+            replies=group_audience.later_messages(self.s,session,start,end,now=now)
+            text=group_audience.hide_address(r['text'],participants) if group else r['text']
+            item={'when':memory_time.relative(start,now),'i_said':text,'is_evidence':False,'later_messages':replies}
+            if group:
+                target_ids=group_audience.targets(self.s,r,participants)
+                # An empty list asserts only that the target has not spoken, not why.
+                item['target_user_ids']=sorted(target_ids)
+                item['target_spoke_after']=bool(target_ids and self.db.execute(
+                    "SELECT 1 FROM events WHERE platform='qq' AND bot_account_id=? AND conversation_id=? "
+                    "AND origin='external_user' AND active=1 AND occurred_at>? AND occurred_at<=? AND actor_id IN ("+
+                    ','.join('?' for _ in target_ids)+') LIMIT 1',
+                    (str(self.s.policy['qq_bot_account']),session,start,end,*sorted(target_ids))).fetchone())
+            out.append(item)
         return out
 
     def watch(self,kind,session,text,terms=()):
@@ -359,18 +408,24 @@ class ProactiveQQ:
         log['recent']=([*(log.get('recent') or []),{'kind':kind,'at':time.time(),'session':session,'text':text[:160],'terms':list(terms)}])[-30:]
         self.s.state.put('qq_proactive_watch',log)
 
-    async def deliver(self,d,text,*,kind,action_id,delivery='text',mood='neutral',voice_style=''):
+    async def deliver(self,d,text,*,kind,action_id,delivery='text',mood='neutral',voice_style='',still_allowed=None):
         """One outbound line. Text goes through the Host send path WITH Maisaka history sync (as her own message),
         so when the other person answers, the reply model sees what she just said. Voice syncs in qq_voice."""
         try:
             from .qq_voice import get as qq_voice
+            self.s.reload_policy()
+            if still_allowed is not None:
+                c=settings(self.s.policy)
+                if not (c and c.get('proactive_enabled') is True and d in self.destinations()
+                        and not self.quiet(d['session']) and still_allowed()):return 'cancelled',''
             if delivery=='voice' and qq_voice(self.s).enabled(d['session']):
                 latest=self.latest_external(d['session'])
-                def still_allowed():
+                def voice_allowed():
                     c=settings(self.s.policy)
                     return bool(c and c.get('proactive_enabled') is True and d in self.destinations()
-                        and self.latest_external(d['session'])==latest and not self.quiet(d['session']))
-                result=await qq_voice(self.s).deliver(d['session'],text,mood,voice_style=voice_style,still_allowed=still_allowed)
+                        and self.latest_external(d['session'])==latest and not self.quiet(d['session'])
+                        and (still_allowed is None or still_allowed()))
+                result=await qq_voice(self.s).deliver(d['session'],text,mood,voice_style=voice_style,still_allowed=voice_allowed)
                 if result.get('status')=='cancelled':return 'cancelled',''
             else:
                 result=await asyncio.wait_for(self.s.ctx.send.text(text,d['session'],return_details=True,
@@ -384,10 +439,10 @@ class ProactiveQQ:
             'sharing_scope':'conversation' if d['kind']=='private' else 'policy','is_private':d['kind']=='private'})
         return status,receipt
 
-    async def send(self,key,d,text,delivery='text',mood='neutral',voice_style=''):
+    async def send(self,key,d,text,delivery='text',mood='neutral',voice_style='',still_allowed=None):
         if d not in self.destinations():raise ValueError('proactive_destination_not_allowed')
         self.db.execute("UPDATE qq_proactive_attempts SET status='sending',text=? WHERE id=?",(text,key))
-        status,receipt=await self.deliver(d,text,kind='proactive',action_id='qq-proactive:'+key,delivery=delivery,mood=mood,voice_style=voice_style)
+        status,receipt=await self.deliver(d,text,kind='proactive',action_id='qq-proactive:'+key,delivery=delivery,mood=mood,voice_style=voice_style,still_allowed=still_allowed)
         if status=='cancelled':
             self.db.execute("UPDATE qq_proactive_attempts SET status='cancelled' WHERE id=?",(key,))
             return {'status':'cancelled'}

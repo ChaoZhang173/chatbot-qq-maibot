@@ -1,5 +1,6 @@
 """Keep platform speaker identity separate from shared conversation memories."""
 import re
+import time
 from . import memory_time
 
 RULE = ('认人以当前平台消息的账号身份为准：current_speaker明确记录当前说话者的user_id、person_id和昵称。'
@@ -15,23 +16,27 @@ def self_identity_query(query):
                           str(query or ''), re.I))
 
 
-def current(service, session):
+def current(service, session, now=None):
     """Use an ingested event and Host person ID; never infer from names or prose."""
     last = service.last_message.get(session)
     if not last or not last[1] or not last[2]:
         return {}
     event = service.state.get_event(last[1])
+    now = time.time() if now is None else now
     account = str(service.policy.get('qq_bot_account', ''))
     if (not event or event.get('platform') != 'qq'
             or str(event.get('bot_account_id')) != account
             or event.get('conversation_id') != session
             or event.get('origin') != 'external_user'
             or str(event.get('actor_id')) != str(last[2])
-            or str(last[2]) == account or not event.get('person_id')):
+            or str(last[2]) == account or not event.get('person_id')
+            or not event.get('active', True)
+            or not 0 <= now - float(event.get('occurred_at') or 0) <= 30 * 60):
         return {}
     return {'user_id': str(event['actor_id']), 'person_id': str(event['person_id']),
             'nickname': str(event.get('nickname') or '')[:120],
-            'source_event': event['event_id']}
+            'source_event': event['event_id'], 'at': event['occurred_at'],
+            'when': memory_time.relative(event['occurred_at'], now)}
 
 
 def evidence_people(hit):

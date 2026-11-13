@@ -66,6 +66,10 @@ def collect(service,date,now):
 
 
 async def prepare(service,request):
+    from .experience_policy import enabled as feature_enabled
+    if feature_enabled(service, 'diary'):
+        from .diary_v2 import prepare as new_prepare
+        return await new_prepare(service, request)
     from .diary import enabled,PRIVATE,TZ
     enabled(service);now=time.time();date=str(request.get('date',''));windows,names=collect(service,date,now)
     digest=hashlib.sha256(dumps([date,windows]).encode()).hexdigest();key='diary_episodes:'+digest
