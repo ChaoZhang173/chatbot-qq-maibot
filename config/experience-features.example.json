@@ -1,0 +1,11 @@
+{
+  "experience_features": {
+    "recall": false,
+    "sharing": false,
+    "diary": false,
+    "web": false
+  },
+  "experience_sharing": {
+    "protected_values": []
+  }
+}

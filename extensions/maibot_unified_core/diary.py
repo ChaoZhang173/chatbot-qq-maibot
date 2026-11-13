@@ -110,6 +110,10 @@ def enabled(service):
 
 
 async def draft(service,request):
+    from .experience_policy import enabled as feature_enabled
+    if feature_enabled(service, 'diary'):
+        from .diary_v2 import draft as new_draft
+        return await new_draft(service, request)
     enabled(service);now=time.time();date=str(request.get('date',''));facts,actors=evidence(service,date,now)
     from .diary_episodes import load
     episodes,private_names=load(service,request.get('episode_id',''),date,now)
@@ -176,6 +180,11 @@ async def draft(service,request):
 
 
 async def review(service,request):
+    from .experience_policy import enabled as feature_enabled
+    value = service.state.get('diary_draft:'+str(request.get('draft_id','')), {})
+    if feature_enabled(service, 'diary') or value.get('style_version') == 4:
+        from .diary_v2 import review as new_review
+        return await new_review(service, request)
     enabled(service);date=str(request.get('date',''));window(date,time.time())
     ident=str(request.get('draft_id',''))
     value=service.state.get('diary_draft:'+ident)

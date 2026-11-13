@@ -71,7 +71,13 @@ def tick(engine):
         e.outbox.event(event)
         s.db.execute('INSERT OR REPLACE INTO action_context(action_id,event_json,persona_version,source_ids) VALUES(?,?,?,?)',
             (key,json.dumps(event,ensure_ascii=False),str(draft['persona_version']),json.dumps(draft['source_ids'])))
-        result=e.sender.deliver('dynamic',None,key,lambda:text)
+        def validate_evidence():
+            # Local evidence check, not another model call or quota consumption.
+            if draft.get('requires_final_validation'):
+                valid=e.unified_request({'op':'diary_validate','date':date,'draft_id':draft['draft_id']})
+                if valid.get('approved') is not True:raise Denied('diary_evidence_changed')
+        options={'pre_dispatch':validate_evidence} if draft.get('requires_final_validation') else {}
+        result=e.sender.deliver('dynamic',None,key,lambda:text,**options)
         state.update(status=result['status'],draft_id=draft['draft_id'],result=result)
         s.put(marker,state);e.sync()
         return {'date':date,**result}

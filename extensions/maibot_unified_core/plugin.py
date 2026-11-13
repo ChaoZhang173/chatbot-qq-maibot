@@ -180,7 +180,11 @@ class UnifiedCorePlugin(MaiBotPlugin):
 
     async def _request_context(self, **kwargs):
         try:
-            return await self._inject(**kwargs)
+            result = await self._inject(**kwargs)
+            if VOICE_SCOPE.get() is None:
+                from .experience_runtime import decorate
+                result = decorate(self.service, result, kwargs)
+            return result
         except Exception as exc:
             if VOICE_SCOPE.get() is None:
                 raise
@@ -217,6 +221,9 @@ class UnifiedCorePlugin(MaiBotPlugin):
         if not session_id or not isinstance(output_items, list):
             return {"action": "continue"}
         filtered = self.service.filter_qq_planner_output(str(session_id), output_items)
+        if VOICE_SCOPE.get() is None:
+            from .experience_runtime import plan_output
+            filtered = plan_output(self.service, str(session_id), filtered)
         return {"action": "continue", "modified_kwargs": {
             **kwargs, "session_id": session_id, "output_items": filtered,
         }}
@@ -230,6 +237,9 @@ class UnifiedCorePlugin(MaiBotPlugin):
         if not self.service.receipt_requested(str(session_id), str(reply_message_id)) and looks_internal(response):
             response = ""
         allowed = self.service.guard_qq_reply(str(session_id), str(reply_message_id), reply_tool_args or {})
+        if allowed and VOICE_SCOPE.get() is None:
+            from .experience_runtime import stage
+            response = stage(self.service, str(session_id), str(reply_message_id), reply_tool_args, response)
         scope = VOICE_SCOPE.get()
         if allowed and response and scope is not None:
             scope["voice_style"] = normalize_style((reply_tool_args or {}).get("voice_style"))
@@ -246,12 +256,19 @@ class UnifiedCorePlugin(MaiBotPlugin):
     async def sent_qq(self, message=None, sent=False, **kwargs):
         if isinstance(message, dict) and message.get("platform") == "qq":
             # sent is Host's DeliveryBatch.has_success, not mere hook completion.
-            await self.service.record_qq_sent(message, sent is True)
+            recorded = {**message, 'reply_to': str(kwargs.get('reply_message_id') or message.get('reply_to') or '')}
+            await self.service.record_qq_sent(recorded, sent is True)
+            from .experience_runtime import after_send
+            after_send(self.service, message, sent is True, str(kwargs.get('reply_message_id') or ''))
         return {"action": "continue"}
 
     @HookHandler("send_service.before_send", mode=HookMode.BLOCKING,
                  order=HookOrder.LATE, timeout_ms=5000)
     async def pending_qq(self, message=None, **kwargs):
+        if isinstance(message, dict) and message.get('platform') == 'qq':
+            from .experience_runtime import before_send
+            if not before_send(self.service, message, str(kwargs.get('reply_message_id') or '')):
+                return {'action': 'abort'}
         pending = getattr(self.service, "record_qq_pending", None)
         if pending and isinstance(message, dict) and message.get("platform") == "qq":
             await pending(message)

@@ -215,7 +215,7 @@ class UnifiedService:
             if len(raw)>MAX_PACKET or not raw.endswith(b'\n'):raise ValueError('packet_size')
             request=json.loads(raw);op=request.get('op')
             admin=self.authorize_peer(uid,op)
-            if not admin and op not in self.XHS_OPS and op not in self.VOICE_OPS and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review','explore_claim','explore_report'):raise PermissionError('admin_only')
+            if not admin and op not in self.XHS_OPS and op not in self.VOICE_OPS and op not in ('decide','activity','event','status','command_claim','command_interpret','command_result','command_review','content_screen','command_asset','live_plan','live_observe','autonomy_state','autonomy_plan','account_snapshot','diary_episodes','diary_draft','diary_review','diary_validate','explore_claim','explore_report'):raise PermissionError('admin_only')
             if op in ('voice_turn','reminder_prepare'):
                 work=asyncio.create_task(self.dispatch(request,admin=admin))
                 disconnected=asyncio.create_task(reader.read(1))
@@ -323,6 +323,10 @@ class UnifiedService:
             self.reload_policy()
             from .diary_episodes import prepare
             return await prepare(self,r)
+        if op == 'diary_validate':
+            self.reload_policy()
+            from .diary_v2 import validate
+            return validate(self, r)
         if op in ('diary_draft','diary_review'):
             self.reload_policy()
             from . import diary
@@ -479,7 +483,7 @@ class UnifiedService:
                'learning_allowed':not self_origin and not m.get('is_notify') and not m.get('is_command') and not content_rules.blocked(content) and not content.startswith(COMMAND_PREFIX),
                'attachment_refs':refs,'metadata':{'material':'visible_text_and_media_description' if refs else 'text',
                'source_chat_id':session,'chat_id':session,'identity_source':'maibot_host',
-               'is_private':m.get('scope')=='private'}}
+               'is_private':is_private,'reply_to':str(m.get('reply_to') or '')}}
         host_id='' if self_origin else await self.resolve_qq_identity(actor)
         if not self_origin and not host_id:
             self.queue_qq_identity(event)
@@ -702,6 +706,12 @@ class UnifiedService:
             if not previous_event or previous_event['occurred_at']<=event['occurred_at']:
                 self.last_message[session]=(event['content'][:300],result['event_id'],actor)
         if host_id:self.state.put('host_person:'+result['person_id'],str(host_id))
+        if fresh:
+            from .shareable_experience import observe_exclusion
+            from .experience_runtime import observe
+            stored_event = self.state.get_event(result['event_id']) or event
+            observe_exclusion(self, stored_event)
+            observe(self, stored_event)
         return result
 
     async def retry_qq_identities(self):
@@ -751,7 +761,11 @@ class UnifiedService:
         if sent is True and pending.get('local_message_id') and mid!=pending['local_message_id']:remote_id=mid
         action.update(status='succeeded' if sent is True else 'unknown',receipt_verified=sent is True,
                       remote_id=remote_id,content=self.qq_text(m)[:1500],persona_version=self.state.persona().get('version'),
-                      receipt_kind='host_delivery_batch_success' if sent is True else 'host_no_verified_success')
+                      receipt_kind='host_delivery_batch_success' if sent is True else 'host_no_verified_success', reply_to=str(m.get('reply_to') or ''))
+        from .experience_policy import enabled as experience_enabled
+        if experience_enabled(self, 'sharing'):
+            from .experience_runtime import sent_text
+            action['content'] = sent_text(self, m)[:1500]
         if self.private_access and session in self.private_access.sessions():action.update(sharing_scope='conversation',is_private=True)
         result=self.state.record_activity(action);self.state.put(pending_key,{})
         self.state.put(receipt_key,result)
@@ -1323,6 +1337,10 @@ class UnifiedService:
         if name=='persona':return {'success':True,'content':self.state.persona_view()}
         if name=='activity':
             query=str(kwargs.get('query',''))
+            from .experience_policy import enabled as feature_enabled
+            if feature_enabled(self, 'recall') and platform == 'qq':
+                from .experience_view import query as experiences, model_view
+                return {'success': True, 'content': {'self_experiences': model_view(experiences(self, query, session=session))}}
             since=None
             if '今天' in query:
                 now=datetime.now(TZ);since=now.replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
